@@ -19,7 +19,7 @@ const GlobalProgress: React.FC = () => {
 
     const fetchProgress = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/progress');
+        const response = await fetch('/api/progress');
         const data = await response.json();
         
         // Only show progress if there's active processing

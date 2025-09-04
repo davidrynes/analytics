@@ -62,7 +62,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload }) => {
       formData.append('file', selectedFile);
 
       setCurrentStep(0);
-      const response = await fetch('http://localhost:3001/api/upload', {
+      const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
@@ -112,14 +112,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload }) => {
     while (attempts < maxAttempts) {
       try {
         // Získáme progress info
-        const progressResponse = await fetch('http://localhost:3001/api/progress');
+        const progressResponse = await fetch('/api/progress');
         const progressData = await progressResponse.json();
         
         // Aktualizace progress státu
         setProgress(progressData);
 
         // Kontrola dokončení
-        const statusResponse = await fetch('http://localhost:3001/api/status');
+        const statusResponse = await fetch('/api/status');
         const statusResult = await statusResponse.json();
 
         if (statusResult.status === 'completed') {
