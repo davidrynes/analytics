@@ -72,6 +72,33 @@ const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetSelected }) =>
     }
   };
 
+  const deleteDataset = async (datasetId: string) => {
+    if (!window.confirm('Opravdu chcete smazat tento dataset? Tato akce je nevratná.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:3001/api/datasets/${datasetId}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        // Remove from local state
+        setDatasets(prev => prev.filter(d => d.id !== datasetId));
+        if (activeDataset === datasetId) {
+          setActiveDataset(null);
+        }
+      } else {
+        const error = await response.json();
+        console.error('Error deleting dataset:', error);
+        alert('Chyba při mazání datasetu: ' + error.error);
+      }
+    } catch (error) {
+      console.error('Error deleting dataset:', error);
+      alert('Chyba při mazání datasetu');
+    }
+  };
+
   const getStatusBadge = (dataset: Dataset) => {
     switch (dataset.status) {
       case 'completed':
@@ -235,6 +262,13 @@ const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetSelected }) =>
                             Chyba
                           </Button>
                         )}
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteDataset(dataset.id)}
+                        >
+                          Smazat
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
