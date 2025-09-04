@@ -37,7 +37,7 @@ const CsvUpload: React.FC<CsvUploadProps> = ({ onUpload }) => {
       const formData = new FormData();
       formData.append('csvFile', file);
 
-      const response = await fetch(`http://localhost:3001/api/upload-csv/${datasetId}`, {
+      const response = await fetch(`/api/upload-csv/${datasetId}`, {
         method: 'POST',
         body: formData,
       });
