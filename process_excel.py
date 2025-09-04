@@ -147,7 +147,7 @@ def main():
     input_file = "Reporter_Novinky.cz_Sledovanost_videiÌ_-_NOVAÌ_20250818-20250824.xlsx"
     
     # Název výstupního souboru
-    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T141416_c4f7a567/clean.csv"
+    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T180943_c4f7a567/clean.csv"
     
     # Kontrola existence vstupního souboru
     if not os.path.exists(input_file):

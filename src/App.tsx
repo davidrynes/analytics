@@ -4,6 +4,7 @@ import Header from './components/Header';
 import FileUpload from './components/FileUpload';
 import Dashboard from './components/Dashboard';
 import DatasetManager from './components/DatasetManager';
+import ManualSourceEditor from './components/ManualSourceEditor';
 import GlobalProgress from './components/GlobalProgress';
 
 const App: React.FC = () => {
@@ -27,6 +28,8 @@ const App: React.FC = () => {
                 </div>
               } />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/datasets" element={<DatasetManager onDatasetSelected={handleDatasetSelected} />} />
+              <Route path="/sources" element={<ManualSourceEditor />} />
             </Routes>
           </div>
         </div>

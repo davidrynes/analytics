@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from './ui/button';
-import { Video, Upload, BarChart3 } from 'lucide-react';
+import { Video, Upload, BarChart3, Database, Edit3 } from 'lucide-react';
 
 const Header: React.FC = () => {
   const location = useLocation();
@@ -33,6 +33,26 @@ const Header: React.FC = () => {
               <Link to="/dashboard" className="flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
                 Dashboard
+              </Link>
+            </Button>
+            
+            <Button
+              variant={location.pathname === '/datasets' ? 'default' : 'ghost'}
+              asChild
+            >
+              <Link to="/datasets" className="flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Datasety
+              </Link>
+            </Button>
+            
+            <Button
+              variant={location.pathname === '/sources' ? 'default' : 'ghost'}
+              asChild
+            >
+              <Link to="/sources" className="flex items-center gap-2">
+                <Edit3 className="h-4 w-4" />
+                Zdroje
               </Link>
             </Button>
           </nav>
