@@ -112,7 +112,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload }) => {
     while (attempts < maxAttempts) {
       try {
         // Získáme progress info
-        const progressResponse = await fetch('http://localhost:3001/api/progress');
+        const progressResponse = await fetch('/api/progress');
         const progressData = await progressResponse.json();
         
         // Aktualizace progress státu
