@@ -158,8 +158,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     // Step 2: Run process_excel.py
     console.log('Running process_excel.py...');
+    let result1;
     try {
-      const result1 = await runPythonScript('process_excel.py');
+      result1 = await runPythonScript('process_excel.py');
       console.log('process_excel.py completed successfully');
       console.log('stdout:', result1.stdout);
       if (result1.stderr) {
