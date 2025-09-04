@@ -15,7 +15,7 @@ app.use(express.json());
 // Configure multer for file upload
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, '../'); // Save to parent directory where Python scripts are
+    cb(null, './'); // Save to current directory where Python scripts are
   },
   filename: (req, file, cb) => {
     cb(null, file.originalname);
@@ -62,7 +62,7 @@ const csvUpload = multer({
 function runPythonScript(scriptPath, args = []) {
   return new Promise((resolve, reject) => {
     const pythonProcess = spawn('python3', [scriptPath, ...args], {
-      cwd: path.join(__dirname, '../')
+      cwd: path.join(__dirname, './')
     });
 
     let stdout = '';
@@ -104,7 +104,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     const filename = req.file.filename;
     const datasetId = generateDatasetId(filename);
-    const parentDir = path.join(__dirname, '../');
+    const parentDir = path.join(__dirname, './');
     const datasetsDir = path.join(__dirname, 'datasets');
     const datasetDir = path.join(datasetsDir, datasetId);
     
@@ -213,7 +213,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 // API endpoint to check processing status
 app.get('/api/status', async (req, res) => {
   try {
-    const parentDir = path.join(__dirname, '../');
+    const parentDir = path.join(__dirname, './');
     const csvPath = path.join(parentDir, 'videa_s_extrahovanymi_info.csv');
     
     try {
@@ -230,7 +230,7 @@ app.get('/api/status', async (req, res) => {
 // API endpoint for progress tracking
 app.get('/api/progress', async (req, res) => {
   try {
-    const parentDir = path.join(__dirname, '../');
+    const parentDir = path.join(__dirname, './');
     const progressPath = path.join(parentDir, 'progress.json');
     
     try {
