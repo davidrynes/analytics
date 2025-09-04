@@ -61,7 +61,9 @@ const csvUpload = multer({
 // Helper function to run Python script
 function runPythonScript(scriptPath, args = []) {
   return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python3', [scriptPath, ...args], {
+    // Use virtual environment Python if available, otherwise fallback to python3
+    const pythonCmd = process.env.NODE_ENV === 'production' ? '/opt/venv/bin/python' : 'python3';
+    const pythonProcess = spawn(pythonCmd, [scriptPath, ...args], {
       cwd: path.join(__dirname, '../')
     });
 

@@ -25,8 +25,12 @@ COPY requirements.txt ./
 # Install Node.js dependencies
 RUN npm install
 
-# Install Python dependencies
-RUN pip3 install -r requirements.txt
+# Install Python dependencies in virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+ENV NODE_ENV=production
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
 
 # Install Playwright and Chromium
 RUN npx playwright install chromium
