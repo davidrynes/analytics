@@ -144,10 +144,10 @@ def process_excel_file(input_file, output_file):
 def main():
     """Hlavní funkce skriptu."""
     # Název vstupního souboru
-    input_file = "Reporter_Novinky.cz_Sledovanost_videiÌ_-_NOVAÌ_20250818-20250824.xlsx"
+    input_file = "Reporter_Novinky.cz_Sledovanost_videiÌ_-_NOVAÌ_20250825-20250831.xlsx"
     
     # Název výstupního souboru
-    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T180943_c4f7a567/clean.csv"
+    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T202854_cc5944cd/clean.csv"
     
     # Kontrola existence vstupního souboru
     if not os.path.exists(input_file):

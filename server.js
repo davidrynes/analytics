@@ -583,11 +583,19 @@ app.post('/api/update-source', async (req, res) => {
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'build')));
   
+  // Catch-all handler: send back React's index.html file for any non-API routes
   app.get('*', (req, res) => {
+    // Skip API routes
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'API endpoint not found' });
+    }
     res.sendFile(path.join(__dirname, 'build', 'index.html'));
   });
 }
 
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Railway Environment: ${process.env.RAILWAY_ENVIRONMENT || 'not set'}`);
+  console.log(`Port: ${port}`);
 });

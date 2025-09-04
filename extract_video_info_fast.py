@@ -337,14 +337,17 @@ class FastVideoInfoExtractor:
         print(f"🔄 Zkouším znovu zpracovat {len(self.failed_videos)} selhaných videí...")
         
         async with async_playwright() as p:
-            # Detekce prostředí pro retry
+            # Detekce prostředí pro retry - vždy headless na Railway
             is_cloud = (
                 os.environ.get('RAILWAY_ENVIRONMENT') or 
                 os.environ.get('NODE_ENV') == 'production' or
                 os.environ.get('PORT') or
                 os.environ.get('RAILWAY_STATIC_URL') or
-                os.environ.get('DYNO')
+                os.environ.get('DYNO') or
+                os.environ.get('RAILWAY_DEPLOYMENT_ID') or
+                os.environ.get('RAILWAY_PROJECT_ID')
             )
+            print(f"🌐 Retry Environment variables: RAILWAY_ENVIRONMENT={os.environ.get('RAILWAY_ENVIRONMENT')}, NODE_ENV={os.environ.get('NODE_ENV')}, PORT={os.environ.get('PORT')}")
             
             if is_cloud:
                 print("☁️ Retry v CLOUD režimu (headless=True)")
@@ -433,11 +436,14 @@ class FastVideoInfoExtractor:
                 os.environ.get('NODE_ENV') == 'production' or
                 os.environ.get('PORT') or  # Railway vždy nastaví PORT
                 os.environ.get('RAILWAY_STATIC_URL') or  # Railway specific
+                os.environ.get('RAILWAY_DEPLOYMENT_ID') or  # Railway specific
+                os.environ.get('RAILWAY_PROJECT_ID') or  # Railway specific
                 os.environ.get('DYNO')  # Heroku fallback
             )
             
             print(f"🌐 Detekce prostředí: is_cloud={is_cloud}")
-            print(f"🌐 Environment variables: PORT={os.environ.get('PORT')}, NODE_ENV={os.environ.get('NODE_ENV')}")
+            print(f"🌐 Environment variables: RAILWAY_ENVIRONMENT={os.environ.get('RAILWAY_ENVIRONMENT')}, NODE_ENV={os.environ.get('NODE_ENV')}, PORT={os.environ.get('PORT')}")
+            print(f"🌐 Railway specific: RAILWAY_DEPLOYMENT_ID={os.environ.get('RAILWAY_DEPLOYMENT_ID')}, RAILWAY_PROJECT_ID={os.environ.get('RAILWAY_PROJECT_ID')}")
             
             if is_cloud:
                 print("☁️ Spouštím v CLOUD režimu (headless=True)")
@@ -514,8 +520,8 @@ class FastVideoInfoExtractor:
 
 async def main():
     """Hlavní funkce."""
-    csv_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T180943_c4f7a567/clean.csv"
-    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T180943_c4f7a567/extracted.csv"
+    csv_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T202854_cc5944cd/clean.csv"
+    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T202854_cc5944cd/extracted.csv"
     
     if not os.path.exists(csv_file):
         print(f"❌ Vstupní soubor {csv_file} neexistuje.")
@@ -535,6 +541,9 @@ async def main():
     
     if success:
         print(f"\n⚡ RYCHLÁ EXTRAKCE DOKONČENA za {end_time - start_time:.1f} sekund! ⚡")
+        print(f"📊 Statistiky: Úspěšně zpracováno {len(extractor.results)} z {len(extractor.data)} videí")
+        print(f"🔄 Selhaných videí: {len(extractor.failed_videos) if hasattr(extractor, 'failed_videos') else 0}")
+        print(f"🌐 Prostředí: {'CLOUD' if os.environ.get('PORT') else 'LOKÁLNÍ'}")
     else:
         print(f"\n❌ EXTRAKCE SELHALA")
 
