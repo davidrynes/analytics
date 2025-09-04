@@ -372,6 +372,213 @@ app.post('/api/upload-csv/:datasetId', csvUpload.single('csvFile'), async (req, 
   }
 });
 
+// API endpoint pro získání seznamu datasetů
+app.get('/api/datasets', async (req, res) => {
+  try {
+    const datasetsDir = path.join(__dirname, 'datasets');
+    const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
+    
+    const datasets = [];
+    
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const datasetPath = path.join(datasetsDir, entry.name);
+        const metadataPath = path.join(datasetPath, 'metadata.json');
+        const extractedPath = path.join(datasetPath, 'extracted.csv');
+        
+        let metadata = {};
+        let hasExtracted = false;
+        
+        try {
+          const metadataContent = await fs.readFile(metadataPath, 'utf8');
+          metadata = JSON.parse(metadataContent);
+        } catch (err) {
+          console.log(`No metadata for ${entry.name}`);
+        }
+        
+        try {
+          await fs.access(extractedPath);
+          hasExtracted = true;
+        } catch (err) {
+          // extracted.csv doesn't exist
+        }
+        
+        datasets.push({
+          id: entry.name,
+          ...metadata,
+          hasExtracted,
+          createdAt: entry.name.split('_')[0] // Extract timestamp from folder name
+        });
+      }
+    }
+    
+    // Sort by creation date (newest first)
+    datasets.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    res.json(datasets);
+  } catch (error) {
+    console.error('Error fetching datasets:', error);
+    res.status(500).json({ error: 'Failed to fetch datasets' });
+  }
+});
+
+// API endpoint pro smazání datasetu
+app.delete('/api/datasets/:datasetId', async (req, res) => {
+  try {
+    const { datasetId } = req.params;
+    const datasetPath = path.join(__dirname, 'datasets', datasetId);
+    
+    // Security check - ensure path is within datasets directory
+    const resolvedPath = path.resolve(datasetPath);
+    const datasetsDir = path.resolve(path.join(__dirname, 'datasets'));
+    
+    if (!resolvedPath.startsWith(datasetsDir)) {
+      return res.status(400).json({ error: 'Invalid dataset path' });
+    }
+    
+    await fs.rm(datasetPath, { recursive: true, force: true });
+    
+    res.json({ message: 'Dataset deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting dataset:', error);
+    res.status(500).json({ error: 'Failed to delete dataset' });
+  }
+});
+
+// API endpoint pro získání nejnovějšího extracted.csv
+app.get('/api/latest-extracted', async (req, res) => {
+  try {
+    const datasetsDir = path.join(__dirname, 'datasets');
+    const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
+    
+    let latestDataset = null;
+    let latestTime = 0;
+    
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const extractedPath = path.join(datasetsDir, entry.name, 'extracted.csv');
+        
+        try {
+          const stats = await fs.stat(extractedPath);
+          if (stats.mtime.getTime() > latestTime) {
+            latestTime = stats.mtime.getTime();
+            latestDataset = entry.name;
+          }
+        } catch (err) {
+          // extracted.csv doesn't exist
+        }
+      }
+    }
+    
+    if (!latestDataset) {
+      return res.status(404).json({ error: 'No extracted.csv found' });
+    }
+    
+    const extractedPath = path.join(datasetsDir, latestDataset, 'extracted.csv');
+    const csvContent = await fs.readFile(extractedPath, 'utf8');
+    
+    // Parse CSV content
+    const lines = csvContent.split('\n');
+    const headers = lines[0].split(';');
+    const data = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim()) {
+        const values = lines[i].split(';');
+        const row = {};
+        headers.forEach((header, index) => {
+          row[header] = values[index] || '';
+        });
+        data.push(row);
+      }
+    }
+    
+    res.json({
+      datasetId: latestDataset,
+      data: data,
+      headers: headers
+    });
+  } catch (error) {
+    console.error('Error fetching latest extracted data:', error);
+    res.status(500).json({ error: 'Failed to fetch latest extracted data' });
+  }
+});
+
+// API endpoint pro aktualizaci zdroje videa
+app.post('/api/update-source', async (req, res) => {
+  try {
+    const { videoTitle, newSource } = req.body;
+    
+    if (!videoTitle || !newSource) {
+      return res.status(400).json({ error: 'Video title and new source are required' });
+    }
+    
+    const datasetsDir = path.join(__dirname, 'datasets');
+    const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
+    
+    let latestDataset = null;
+    let latestTime = 0;
+    
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const extractedPath = path.join(datasetsDir, entry.name, 'extracted.csv');
+        
+        try {
+          const stats = await fs.stat(extractedPath);
+          if (stats.mtime.getTime() > latestTime) {
+            latestTime = stats.mtime.getTime();
+            latestDataset = entry.name;
+          }
+        } catch (err) {
+          // extracted.csv doesn't exist
+        }
+      }
+    }
+    
+    if (!latestDataset) {
+      return res.status(404).json({ error: 'No extracted.csv found' });
+    }
+    
+    const extractedPath = path.join(datasetsDir, latestDataset, 'extracted.csv');
+    const csvContent = await fs.readFile(extractedPath, 'utf8');
+    
+    // Parse CSV content
+    const lines = csvContent.split('\n');
+    const headers = lines[0].split(';');
+    let updated = false;
+    
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim()) {
+        const values = lines[i].split(';');
+        const titleIndex = headers.findIndex(h => h.includes('Název') || h.includes('Title'));
+        
+        if (titleIndex !== -1 && values[titleIndex] && values[titleIndex].includes(videoTitle)) {
+          const sourceIndex = headers.findIndex(h => h.includes('Extrahované') || h.includes('Source'));
+          if (sourceIndex !== -1) {
+            values[sourceIndex] = newSource;
+            lines[i] = values.join(';');
+            updated = true;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (!updated) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+    
+    // Write updated CSV
+    const updatedContent = lines.join('\n');
+    await fs.writeFile(extractedPath, updatedContent, 'utf8');
+    
+    res.json({ message: 'Source updated successfully' });
+  } catch (error) {
+    console.error('Error updating source:', error);
+    res.status(500).json({ error: 'Failed to update source' });
+  }
+});
+
 // Serve the React app in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'build')));
