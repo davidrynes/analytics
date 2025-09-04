@@ -1,6 +1,4 @@
 node_modules/
-build/
-datasets/
 *.csv
 *.xlsx
 progress.json
