@@ -337,7 +337,21 @@ class FastVideoInfoExtractor:
         print(f"🔄 Zkouším znovu zpracovat {len(self.failed_videos)} selhaných videí...")
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            # Detekce prostředí pro retry
+            is_cloud = (
+                os.environ.get('RAILWAY_ENVIRONMENT') or 
+                os.environ.get('NODE_ENV') == 'production' or
+                os.environ.get('PORT') or
+                os.environ.get('RAILWAY_STATIC_URL') or
+                os.environ.get('DYNO')
+            )
+            
+            if is_cloud:
+                print("☁️ Retry v CLOUD režimu (headless=True)")
+                browser = await p.chromium.launch(headless=True)
+            else:
+                print("💻 Retry v LOKÁLNÍM režimu (headless=False)")
+                browser = await p.chromium.launch(headless=False)
             page = await browser.new_page()
             
             # Nastavení User-Agent
@@ -414,9 +428,19 @@ class FastVideoInfoExtractor:
         
         async with async_playwright() as p:
             # Detekce prostředí - cloud vs lokální
-            is_cloud = os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('NODE_ENV') == 'production'
+            is_cloud = (
+                os.environ.get('RAILWAY_ENVIRONMENT') or 
+                os.environ.get('NODE_ENV') == 'production' or
+                os.environ.get('PORT') or  # Railway vždy nastaví PORT
+                os.environ.get('RAILWAY_STATIC_URL') or  # Railway specific
+                os.environ.get('DYNO')  # Heroku fallback
+            )
+            
+            print(f"🌐 Detekce prostředí: is_cloud={is_cloud}")
+            print(f"🌐 Environment variables: PORT={os.environ.get('PORT')}, NODE_ENV={os.environ.get('NODE_ENV')}")
             
             if is_cloud:
+                print("☁️ Spouštím v CLOUD režimu (headless=True)")
                 # Cloud prostředí - headless s optimalizacemi pro Novinky.cz
                 browser = await p.chromium.launch(
                     headless=True, 
@@ -435,6 +459,7 @@ class FastVideoInfoExtractor:
                     ]
                 )
             else:
+                print("💻 Spouštím v LOKÁLNÍM režimu (headless=False)")
                 # Lokální prostředí - non-headless pro debugging
                 browser = await p.chromium.launch(headless=False, slow_mo=500)
             
@@ -489,8 +514,8 @@ class FastVideoInfoExtractor:
 
 async def main():
     """Hlavní funkce."""
-    csv_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T141416_c4f7a567/clean.csv"
-    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T141416_c4f7a567/extracted.csv"
+    csv_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T180943_c4f7a567/clean.csv"
+    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T180943_c4f7a567/extracted.csv"
     
     if not os.path.exists(csv_file):
         print(f"❌ Vstupní soubor {csv_file} neexistuje.")
