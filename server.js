@@ -252,42 +252,6 @@ app.get('/api/progress', async (req, res) => {
   }
 });
 
-// API endpoint to list all datasets
-app.get('/api/datasets', async (req, res) => {
-  try {
-    const datasetsDir = path.join(__dirname, 'datasets');
-    
-    try {
-      const datasets = [];
-      const entries = await fs.readdir(datasetsDir);
-      
-      for (const entry of entries) {
-        const entryPath = path.join(datasetsDir, entry);
-        const stat = await fs.stat(entryPath);
-        
-        if (stat.isDirectory()) {
-          const metadataPath = path.join(entryPath, 'metadata.json');
-          try {
-            const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'));
-            datasets.push(metadata);
-          } catch (metaError) {
-            console.error(`Error reading metadata for ${entry}:`, metaError);
-          }
-        }
-      }
-      
-      // Sort by upload time (newest first)
-      datasets.sort((a, b) => new Date(b.uploadTime) - new Date(a.uploadTime));
-      
-      res.json(datasets);
-    } catch (dirError) {
-      // Directory doesn't exist yet
-      res.json([]);
-    }
-  } catch (error) {
-    res.status(500).json({ error: 'Error listing datasets: ' + error.message });
-  }
-});
 
 // API endpoint to switch to a specific dataset
 app.post('/api/datasets/:id/activate', async (req, res) => {
@@ -376,46 +340,52 @@ app.post('/api/upload-csv/:datasetId', csvUpload.single('csvFile'), async (req, 
 app.get('/api/datasets', async (req, res) => {
   try {
     const datasetsDir = path.join(__dirname, 'datasets');
-    const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
     
-    const datasets = [];
-    
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const datasetPath = path.join(datasetsDir, entry.name);
-        const metadataPath = path.join(datasetPath, 'metadata.json');
-        const extractedPath = path.join(datasetPath, 'extracted.csv');
-        
-        let metadata = {};
-        let hasExtracted = false;
-        
-        try {
-          const metadataContent = await fs.readFile(metadataPath, 'utf8');
-          metadata = JSON.parse(metadataContent);
-        } catch (err) {
-          console.log(`No metadata for ${entry.name}`);
+    try {
+      const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
+      const datasets = [];
+      
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const datasetPath = path.join(datasetsDir, entry.name);
+          const metadataPath = path.join(datasetPath, 'metadata.json');
+          const extractedPath = path.join(datasetPath, 'extracted.csv');
+          
+          let metadata = {};
+          let hasExtracted = false;
+          
+          try {
+            const metadataContent = await fs.readFile(metadataPath, 'utf8');
+            metadata = JSON.parse(metadataContent);
+          } catch (err) {
+            console.log(`No metadata for ${entry.name}`);
+          }
+          
+          try {
+            await fs.access(extractedPath);
+            hasExtracted = true;
+          } catch (err) {
+            // extracted.csv doesn't exist
+          }
+          
+          datasets.push({
+            id: entry.name,
+            ...metadata,
+            hasExtracted,
+            createdAt: entry.name.split('_')[0] // Extract timestamp from folder name
+          });
         }
-        
-        try {
-          await fs.access(extractedPath);
-          hasExtracted = true;
-        } catch (err) {
-          // extracted.csv doesn't exist
-        }
-        
-        datasets.push({
-          id: entry.name,
-          ...metadata,
-          hasExtracted,
-          createdAt: entry.name.split('_')[0] // Extract timestamp from folder name
-        });
       }
+      
+      // Sort by creation date (newest first)
+      datasets.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      
+      res.json(datasets);
+    } catch (dirError) {
+      // Directory doesn't exist yet - return empty array
+      console.log('Datasets directory does not exist yet, returning empty array');
+      res.json([]);
     }
-    
-    // Sort by creation date (newest first)
-    datasets.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
-    res.json(datasets);
   } catch (error) {
     console.error('Error fetching datasets:', error);
     res.status(500).json({ error: 'Failed to fetch datasets' });
@@ -449,55 +419,87 @@ app.delete('/api/datasets/:datasetId', async (req, res) => {
 app.get('/api/latest-extracted', async (req, res) => {
   try {
     const datasetsDir = path.join(__dirname, 'datasets');
-    const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
     
-    let latestDataset = null;
-    let latestTime = 0;
-    
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const extractedPath = path.join(datasetsDir, entry.name, 'extracted.csv');
-        
-        try {
-          const stats = await fs.stat(extractedPath);
-          if (stats.mtime.getTime() > latestTime) {
-            latestTime = stats.mtime.getTime();
-            latestDataset = entry.name;
+    try {
+      const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
+      let latestDataset = null;
+      let latestTime = 0;
+      
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const extractedPath = path.join(datasetsDir, entry.name, 'extracted.csv');
+          
+          try {
+            const stats = await fs.stat(extractedPath);
+            if (stats.mtime.getTime() > latestTime) {
+              latestTime = stats.mtime.getTime();
+              latestDataset = entry.name;
+            }
+          } catch (err) {
+            // extracted.csv doesn't exist
           }
-        } catch (err) {
-          // extracted.csv doesn't exist
         }
       }
-    }
-    
-    if (!latestDataset) {
-      return res.status(404).json({ error: 'No extracted.csv found' });
-    }
-    
-    const extractedPath = path.join(datasetsDir, latestDataset, 'extracted.csv');
-    const csvContent = await fs.readFile(extractedPath, 'utf8');
-    
-    // Parse CSV content
-    const lines = csvContent.split('\n');
-    const headers = lines[0].split(';');
-    const data = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i].trim()) {
-        const values = lines[i].split(';');
-        const row = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index] || '';
+      
+      if (!latestDataset) {
+        return res.status(404).json({ error: 'No extracted.csv found' });
+      }
+      
+      const extractedPath = path.join(datasetsDir, latestDataset, 'extracted.csv');
+      const csvContent = await fs.readFile(extractedPath, 'utf8');
+      
+      // Parse CSV content
+      const lines = csvContent.split('\n');
+      const headers = lines[0].split(';');
+      const data = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim()) {
+          const values = lines[i].split(';');
+          const row = {};
+          headers.forEach((header, index) => {
+            row[header] = values[index] || '';
+          });
+          data.push(row);
+        }
+      }
+      
+      res.json({
+        datasetId: latestDataset,
+        data: data,
+        headers: headers
+      });
+    } catch (dirError) {
+      // Directory doesn't exist - check fallback CSV
+      console.log('Datasets directory does not exist, checking fallback CSV');
+      const fallbackPath = path.join(__dirname, 'public', 'videa_s_extrahovanymi_info.csv');
+      
+      try {
+        const csvContent = await fs.readFile(fallbackPath, 'utf8');
+        const lines = csvContent.split('\n');
+        const headers = lines[0].split(';');
+        const data = [];
+        
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(';');
+            const row = {};
+            headers.forEach((header, index) => {
+              row[header] = values[index] || '';
+            });
+            data.push(row);
+          }
+        }
+        
+        res.json({
+          datasetId: 'fallback',
+          data: data,
+          headers: headers
         });
-        data.push(row);
+      } catch (fallbackError) {
+        return res.status(404).json({ error: 'No extracted data found' });
       }
     }
-    
-    res.json({
-      datasetId: latestDataset,
-      data: data,
-      headers: headers
-    });
   } catch (error) {
     console.error('Error fetching latest extracted data:', error);
     res.status(500).json({ error: 'Failed to fetch latest extracted data' });

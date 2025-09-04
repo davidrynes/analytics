@@ -1,6 +1,7 @@
 node_modules/
-*.csv
-*.xlsx
 progress.json
 .env
 .DS_Store
+# Ignore uploaded files but keep processed datasets
+*.xlsx
+!datasets/**/*.csv

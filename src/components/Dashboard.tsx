@@ -132,6 +132,7 @@ const Dashboard: React.FC = () => {
           const csvText = await csvResponse.text();
           Papa.parse(csvText, {
             header: true,
+            delimiter: ';',
             complete: (results: Papa.ParseResult<VideoData>) => {
               setData(results.data);
               setLoading(false);
@@ -148,6 +149,7 @@ const Dashboard: React.FC = () => {
       // Fallback na starý způsob
       Papa.parse('/videa_s_extrahovanymi_info.csv', {
         header: true,
+        delimiter: ';',
         complete: (results: Papa.ParseResult<VideoData>) => {
           setData(results.data);
           setLoading(false);

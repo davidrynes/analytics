@@ -89,6 +89,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload }) => {
       Papa.parse('/videa_s_extrahovanymi_info.csv', {
         download: true,
         header: true,
+        delimiter: ';',
         complete: (results: Papa.ParseResult<VideoData>) => {
           setProcessedData(results.data);
           setIsProcessing(false);
