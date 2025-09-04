@@ -31,7 +31,7 @@ const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetSelected }) =>
 
   const loadDatasets = async () => {
     try {
-      const response = await fetch('/api/datasets');
+      const response = await fetch('http://localhost:3001/api/datasets');
       const data = await response.json();
       setDatasets(data);
     } catch (error) {
@@ -54,7 +54,7 @@ const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetSelected }) =>
 
   const activateDataset = async (datasetId: string) => {
     try {
-      const response = await fetch(`/api/datasets/${datasetId}/activate`, {
+      const response = await fetch(`http://localhost:3001/api/datasets/${datasetId}/activate`, {
         method: 'POST',
       });
       

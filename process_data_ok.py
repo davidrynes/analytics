@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Skript pro zpracování Excel souboru s daty o sledovanosti videí.
-- Načte list "Název videa"
-- Odstraní řádky začínající "- " v prvním sloupci
-- Odstraní sloupce C až L (indexy 2-11)
-- Vyčistí názvy videí od nechtěných uvozovek
+Skript pro zpracování data-ok.csv souboru.
+- Načte data-ok.csv
+- Zpracuje pouze vybraná data
 - Uloží výsledek do CSV
 """
 
@@ -32,50 +30,27 @@ def clean_video_title(title):
         return title
     return title
 
-def process_excel_file(input_file, output_file):
+def process_data_ok_file(input_file, output_file):
     """
-    Zpracuje Excel soubor podle specifikace.
+    Zpracuje data-ok.csv soubor.
     
     Args:
-        input_file (str): Cesta k vstupnímu Excel souboru
+        input_file (str): Cesta k vstupnímu CSV souboru
         output_file (str): Cesta k výstupnímu CSV souboru
     """
     try:
-        print(f"Načítám Excel soubor: {input_file}")
+        print(f"Načítám data-ok soubor: {input_file}")
         
-        # Načtení listu "Název videa"
-        df = pd.read_excel(input_file, sheet_name='Název videa')
+        # Načtení CSV souboru
+        df = pd.read_csv(input_file, sep=';')
         
         print(f"Původní tvar tabulky: {df.shape}")
         print(f"Původní sloupce: {list(df.columns)}")
         
-        # Odstranění řádků začínajících "- " v prvním sloupci
-        original_rows = len(df)
-        df_filtered = df[~df.iloc[:, 0].astype(str).str.startswith('- ')]
-        removed_rows = original_rows - len(df_filtered)
-        
-        print(f"Odstraněno {removed_rows} řádků začínajících '- '")
-        
-        # Odstranění řádků s \N nebo samotným znakem - v prvním sloupci
-        df_filtered = df_filtered[df_filtered.iloc[:, 0].astype(str) != '\\N']
-        df_filtered = df_filtered[df_filtered.iloc[:, 0].astype(str) != '-']
-        
-        # Počítání odstraněných řádků
-        final_rows = len(df_filtered)
-        total_removed = original_rows - final_rows
-        
-        print(f"Tvar tabulky po filtrování: {df_filtered.shape}")
-        print(f"Celkem odstraněno {total_removed} problematických řádků")
-        
-        # Filtrování videí s Views >= 1000
-        print("Filtruji videa s Views >= 1000...")
-        df_filtered = df_filtered[df_filtered['Views'] >= 1000].copy()
-        print(f"Po filtrování Views >= 1000: {len(df_filtered)} řádků")
-        
         # Zachováme sloupce A, B a G, H, I, J (dokoukanost)
         # Sloupce: A (0), B (1), G (6), H (7), I (8), J (9)
         columns_to_keep = [0, 1, 6, 7, 8, 9]
-        df_final = df_filtered.iloc[:, columns_to_keep]
+        df_final = df.iloc[:, columns_to_keep]
         
         print(f"Tvar tabulky po výběru sloupců: {df_final.shape}")
         print(f"Zachované sloupce: {list(df_final.columns)}")
@@ -108,8 +83,8 @@ def process_excel_file(input_file, output_file):
         
         print("Názvy videí vyčištěny od nechtěných uvozovek")
         
-        # Uložení do CSV se středníkem jako separátorem
-        df_final.to_csv(output_file, index=False, encoding='utf-8', sep=';', quoting=1)  # sep=';', quoting=1 = QUOTE_MINIMAL
+        # Uložení do CSV s minimálními uvozovkami
+        df_final.to_csv(output_file, index=False, encoding='utf-8', quoting=1)  # quoting=1 = QUOTE_MINIMAL
         
         print(f"Data úspěšně uložena do: {output_file}")
         print(f"Finální tvar tabulky: {df_final.shape}")
@@ -144,10 +119,10 @@ def process_excel_file(input_file, output_file):
 def main():
     """Hlavní funkce skriptu."""
     # Název vstupního souboru
-    input_file = "Reporter_Novinky.cz_Sledovanost_videiÌ_-_NOVAÌ_20250818-20250824.xlsx"
+    input_file = "oprava_dat/data-ok.csv"
     
     # Název výstupního souboru
-    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T141416_c4f7a567/clean.csv"
+    output_file = "oprava_dat/data-ok-processed.csv"
     
     # Kontrola existence vstupního souboru
     if not os.path.exists(input_file):
@@ -156,11 +131,11 @@ def main():
         sys.exit(1)
     
     print("=" * 60)
-    print("SKRIPT PRO ZPRACOVÁNÍ EXCEL SOUBORU")
+    print("SKRIPT PRO ZPRACOVÁNÍ DATA-OK.CSV")
     print("=" * 60)
     
     # Zpracování souboru
-    process_excel_file(input_file, output_file)
+    process_data_ok_file(input_file, output_file)
     
     print("\n" + "=" * 60)
     print("ZPRACOVÁNÍ DOKONČENO ÚSPĚŠNĚ")
@@ -168,3 +143,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

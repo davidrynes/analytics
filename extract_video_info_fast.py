@@ -20,7 +20,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 
 class FastVideoInfoExtractor:
-    def __init__(self, csv_file, output_file, max_concurrent=2):  # Sníženo na 2 kvůli anti-bot
+    def __init__(self, csv_file, output_file, max_concurrent=2, retry_failed=True):  # Sníženo na 2 kvůli anti-bot
         self.csv_file = csv_file
         self.output_file = output_file
         self.data = None
@@ -28,6 +28,8 @@ class FastVideoInfoExtractor:
         self.max_concurrent = max_concurrent
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.progress_file = "progress.json"
+        self.retry_failed = retry_failed
+        self.failed_videos = []  # Seznam videí, která selhala
         
         # Seznam různých User-Agent pro rotaci
         self.user_agents = [
@@ -63,7 +65,7 @@ class FastVideoInfoExtractor:
     async def load_data(self):
         """Načte data z CSV souboru."""
         try:
-            df = pd.read_csv(self.csv_file, encoding='utf-8', sep=',', quotechar='"', on_bad_lines='skip')
+            df = pd.read_csv(self.csv_file, encoding='utf-8', sep=';', quotechar='"', on_bad_lines='skip')
             print(f"Načteno {len(df)} videí z {self.csv_file}")
             
             # Filtrování videí s Views >= 1000
@@ -273,11 +275,15 @@ class FastVideoInfoExtractor:
                 
                 # Vyhledání
                 if not await self.search_on_seznam(page, video_title):
+                    if self.retry_failed:
+                        self.failed_videos.append((index, row))
                     return None
                 
                 # Hledání odkazu
                 novinky_url = await self.find_novinky_link_on_seznam(page, video_title)
                 if not novinky_url:
+                    if self.retry_failed:
+                        self.failed_videos.append((index, row))
                     return None
                 
                 # Extrakce
@@ -318,7 +324,79 @@ class FastVideoInfoExtractor:
                 
             except Exception as e:
                 print(f"❌ [{index+1}] Chyba: {e}")
+                if self.retry_failed:
+                    self.failed_videos.append((index, row))
                 return None
+    
+    async def retry_failed_videos(self):
+        """Zkusí znovu zpracovat videa, která selhala."""
+        if not self.failed_videos:
+            print("✅ Žádná videa k retry")
+            return True
+            
+        print(f"🔄 Zkouším znovu zpracovat {len(self.failed_videos)} selhaných videí...")
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            
+            # Nastavení User-Agent
+            await page.set_extra_http_headers({
+                'User-Agent': self.get_next_user_agent()
+            })
+            
+            # Zpracování selhaných videí
+            for index, row in self.failed_videos:
+                try:
+                    print(f"🔄 Retry [{index+1}]: {row['Název článku/videa'][:50]}...")
+                    
+                    # Vyhledání
+                    if not await self.search_on_seznam(page, row['Název článku/videa']):
+                        continue
+                    
+                    # Hledání odkazu
+                    novinky_url = await self.find_novinky_link_on_seznam(page, row['Název článku/videa'])
+                    if not novinky_url:
+                        continue
+                    
+                    # Extrakce
+                    extracted_info = await self.extract_video_info(page, novinky_url)
+                    
+                    # Uložení výsledku
+                    clean_extracted_info = extracted_info or "N/A"
+                    if len(clean_extracted_info) > 200:
+                        clean_extracted_info = clean_extracted_info[:100] + "..."
+                    
+                    import re
+                    clean_extracted_info = re.sub(r'<[^>]+>', '', clean_extracted_info)
+                    clean_extracted_info = clean_extracted_info.replace('\n', ' ').replace('\t', ' ').strip()
+                    
+                    result = {
+                        'Jméno rubriky': str(row['Jméno rubriky']).strip(),
+                        'Název článku/videa': str(row['Název článku/videa']).strip(),
+                        'Views': int(row['Views']),
+                        'Dokoukanost do 25 %': float(row['Dokoukanost do 25 %']) if pd.notna(row['Dokoukanost do 25 %']) else 0.0,
+                        'Dokoukanost do 50 %': float(row['Dokoukanost do 50 %']) if pd.notna(row['Dokoukanost do 50 %']) else 0.0,
+                        'Dokoukanost do 75 %': float(row['Dokoukanost do 75 %']) if pd.notna(row['Dokoukanost do 75 %']) else 0.0,
+                        'Dokoukanost do 100 %': float(row['Dokoukanost do 100 %']) if pd.notna(row['Dokoukanost do 100 %']) else 0.0,
+                        'Extrahované info': clean_extracted_info,
+                        'Novinky URL': str(novinky_url).strip()
+                    }
+                    
+                    self.results.append(result)
+                    print(f"✅ Retry [{index+1}] Hotovo: {extracted_info[:30] if extracted_info else 'N/A'}...")
+                    
+                    # Anti-bot čekání
+                    await asyncio.sleep(random.uniform(3, 6))
+                    
+                except Exception as e:
+                    print(f"❌ Retry [{index+1}] Chyba: {e}")
+                    continue
+            
+            await browser.close()
+        
+        print(f"✅ Retry dokončen. Celkem výsledků: {len(self.results)}")
+        return True
     
     async def run_concurrent(self, max_videos=None):
         """Spustí RYCHLÉ concurrent zpracování."""
@@ -370,8 +448,8 @@ class FastVideoInfoExtractor:
             try:
                 # Rozdělení práce mezi pages
                 tasks = []
-                for index, row in data_to_process.iterrows():
-                    page_index = index % len(pages)
+                for idx, (index, row) in enumerate(data_to_process.iterrows()):
+                    page_index = idx % len(pages)
                     page = pages[page_index]
                     task = self.process_video_worker(page, index, row)
                     tasks.append(task)
@@ -388,6 +466,12 @@ class FastVideoInfoExtractor:
                 # Průběžné ukládání
                 await self.save_results()
                 
+                # Retry selhaných videí
+                if self.retry_failed and self.failed_videos:
+                    print(f"🔄 Spouštím retry pro {len(self.failed_videos)} selhaných videí...")
+                    await self.retry_failed_videos()
+                    await self.save_results()
+                
             finally:
                 await browser.close()
         
@@ -398,15 +482,15 @@ class FastVideoInfoExtractor:
         try:
             if self.results:
                 df_results = pd.DataFrame(self.results)
-                df_results.to_csv(self.output_file, index=False, encoding='utf-8')
+                df_results.to_csv(self.output_file, index=False, encoding='utf-8', sep=';')
                 print(f"💾 Výsledky uloženy: {len(self.results)} záznamů -> {self.output_file}")
         except Exception as e:
             print(f"Chyba při ukládání: {e}")
 
 async def main():
     """Hlavní funkce."""
-    csv_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/video-analytics-dashboard/datasets/20250903T213006_4b98941e/clean.csv"
-    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/video-analytics-dashboard/datasets/20250903T213006_4b98941e/extracted.csv"
+    csv_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T141416_c4f7a567/clean.csv"
+    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T141416_c4f7a567/extracted.csv"
     
     if not os.path.exists(csv_file):
         print(f"❌ Vstupní soubor {csv_file} neexistuje.")
@@ -416,8 +500,8 @@ async def main():
     print("RYCHLÝ SKRIPT PRO EXTRAKCI Z NOVINKY.CZ")
     print("🚀" + "=" * 60)
     
-    # Vytvoření extraktoru s anti-bot ochranou
-    extractor = FastVideoInfoExtractor(csv_file, output_file, max_concurrent=2)  # 2 workers pro rychlejší zpracování
+    # Vytvoření extraktoru s anti-bot ochranou a retry mechanismem
+    extractor = FastVideoInfoExtractor(csv_file, output_file, max_concurrent=2, retry_failed=True)  # 2 workers + retry
     
     # Spuštění rychlé extrakce - všechna videa
     start_time = time.time()

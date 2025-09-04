@@ -74,7 +74,7 @@ const Dashboard: React.FC = () => {
 
   const loadDatasets = async () => {
     try {
-      const response = await fetch('/api/datasets');
+      const response = await fetch('http://localhost:3001/api/datasets');
       const datasetsData = await response.json();
       setDatasets(datasetsData);
       
@@ -91,11 +91,12 @@ const Dashboard: React.FC = () => {
   const loadDataForDataset = async (datasetId: string) => {
     setLoading(true);
     try {
-      const csvResponse = await fetch(`/datasets/${datasetId}/extracted.csv`);
+      const csvResponse = await fetch(`http://localhost:3001/datasets/${datasetId}/extracted.csv`);
       if (csvResponse.ok) {
         const csvText = await csvResponse.text();
         Papa.parse(csvText, {
           header: true,
+          delimiter: ';',
           complete: (results: Papa.ParseResult<VideoData>) => {
             setData(results.data);
             setLoading(false);
@@ -118,7 +119,7 @@ const Dashboard: React.FC = () => {
   const loadData = async () => {
     try {
       // Nejdříve zkusíme načíst data z aktuálního aktivního datasetu
-      const response = await fetch('/api/datasets');
+      const response = await fetch('http://localhost:3001/api/datasets');
       const datasets = await response.json();
       
       // Najdeme nejnovější dokončený dataset
@@ -127,11 +128,12 @@ const Dashboard: React.FC = () => {
         const latestDataset = completedDatasets[0]; // Už jsou seřazené podle času
         
         // Načteme data z nejnovějšího datasetu
-        const csvResponse = await fetch(`/datasets/${latestDataset.id}/extracted.csv`);
+        const csvResponse = await fetch(`http://localhost:3001/datasets/${latestDataset.id}/extracted.csv`);
         if (csvResponse.ok) {
           const csvText = await csvResponse.text();
           Papa.parse(csvText, {
             header: true,
+            delimiter: ';',
             complete: (results: Papa.ParseResult<VideoData>) => {
               setData(results.data);
               setLoading(false);
@@ -148,6 +150,7 @@ const Dashboard: React.FC = () => {
       // Fallback na starý způsob
       Papa.parse('/videa_s_extrahovanymi_info.csv', {
         header: true,
+        delimiter: ';',
         complete: (results: Papa.ParseResult<VideoData>) => {
           setData(results.data);
           setLoading(false);
