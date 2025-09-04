@@ -93,6 +93,7 @@ datasets/
 *.xlsx
 *.csv
 debug_results_*.png
+video-analytics-dashboard/
 
 # Python
 *.pyc

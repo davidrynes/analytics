@@ -1,83 +1,46 @@
-# Skript pro zpracování Excel souboru s daty o sledovanosti videí
+# Getting Started with Create React App
 
-Tento skript zpracovává Excel soubor s daty o sledovanosti videí z Novinky.cz a vytváří vyčištěný CSV soubor.
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
-## Co skript dělá
+## Available Scripts
 
-1. **Načte list "Název videa"** z Excel souboru
-2. **Odstraní řádky začínající "- "** v prvním sloupci (Název videa)
-3. **Odstraní řádky s \N** v prvním sloupci (chybějící data)
-4. **Odstraní řádky s samotným znakem "-"** v prvním sloupci (prázdné názvy)
-5. **Odstraní sloupce C až L** (zachová pouze první dva sloupce: Název videa a Views)
-6. **Rozdělí sloupec "Název videa"** na "Jméno rubriky" a "Název článku/videa"
-7. **Vyčistí názvy videí** od nechtěných uvozovek
-8. **Uloží výsledek do CSV** souboru s názvem `videa_vycistena.csv`
-9. **Odstraní všechny uvozovky** z výsledného CSV souboru pro čistý výstup
+In the project directory, you can run:
 
-## Požadavky
+### `npm start`
 
-- Python 3.6+
-- Knihovny: `pandas`, `openpyxl`
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
-## Instalace závislostí
+The page will reload if you make edits.\
+You will also see any lint errors in the console.
 
-```bash
-# Vytvoření virtuálního prostředí
-python3 -m venv venv
+### `npm test`
 
-# Aktivace virtuálního prostředí
-source venv/bin/activate  # Na macOS/Linux
-# nebo
-venv\Scripts\activate     # Na Windows
+Launches the test runner in the interactive watch mode.\
+See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
-# Instalace knihoven
-pip install pandas openpyxl
-```
+### `npm run build`
 
-## Použití
+Builds the app for production to the `build` folder.\
+It correctly bundles React in production mode and optimizes the build for the best performance.
 
-1. Ujistěte se, že máte Excel soubor `Reporter_Novinky.cz_Sledovanost_videí_-_NOVÁ_20250818-20250824.xlsx` ve stejném adresáři
-2. Aktivujte virtuální prostředí: `source venv/bin/activate`
-3. Spusťte skript: `python3 process_excel.py`
+The build is minified and the filenames include the hashes.\
+Your app is ready to be deployed!
 
-## Výstup
+See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
 
-Skript vytvoří soubor `videa_vycistena.csv` s následující strukturou:
+### `npm run eject`
 
-| Sloupec | Název | Popis |
-|---------|-------|-------|
-| A | Jméno rubriky | Název rubriky (např. Krimi, Počasí, Evropa) |
-| B | Název článku/videa | Název článku nebo videa bez rubriky |
-| C | Views | Počet zhlédnutí |
+**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
 
-## Statistiky zpracování
+If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
 
-- **Původní tabulka**: 12,336 řádků × 12 sloupců
-- **Po odstranění řádků s "- "**: 8,798 řádků × 12 sloupců
-- **Po odstranění řádků s \N a "-"**: 8,796 řádků × 12 sloupců
-- **Po rozdělení sloupce Název videa**: 8,796 řádků × 3 sloupce
-- **Finální tabulka**: 8,796 řádků × 3 sloupce
-- **Celkem odstraněno**: 3,540 problematických řádků
-  - 3,538 řádků začínajících "- "
-  - 2 řádky s \N nebo samotným znakem "-"
+Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
 
-## Struktura původních sloupců
+You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
 
-1. Název videa
-2. Views
-3. Dokoukanost 25 %
-4. Dokoukanost 50 %
-5. Dokoukanost 75 %
-6. Dokoukanost 100 %
-7. Dokoukanost 25 %.1
-8. Dokoukanost 50 %.1
-9. Dokoukanost 75 %.1
-10. Dokoukanost 100 %.1
-11. KP 28 (Views)
-12. KP 7 (Views)
+## Learn More
 
-## Poznámky
+You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
 
-- Skript automaticky detekuje řádky začínající "- " v prvním sloupci
-- Výstupní CSV soubor používá UTF-8 kódování
-- Indexy řádků nejsou zahrnuty ve výstupním souboru
+To learn React, check out the [React documentation](https://reactjs.org/).
