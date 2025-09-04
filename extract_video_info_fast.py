@@ -548,4 +548,13 @@ async def main():
         print(f"\n❌ EXTRAKCE SELHALA")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+        print("🏁 Skript dokončen úspěšně")
+    except Exception as e:
+        print(f"❌ Kritická chyba: {e}")
+        raise
+    finally:
+        print("🧹 Cleanup dokončen")
+        import sys
+        sys.exit(0)

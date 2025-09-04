@@ -59,14 +59,39 @@ const csvUpload = multer({
 });
 
 // Helper function to run Python script
-function runPythonScript(scriptPath, args = []) {
+function runPythonScript(scriptPath, args = [], timeoutMs = 30 * 60 * 1000) { // 30 minutes timeout
   return new Promise((resolve, reject) => {
     const pythonProcess = spawn('python3', [scriptPath, ...args], {
-      cwd: path.join(__dirname, './')
+      cwd: path.join(__dirname, './'),
+      stdio: ['pipe', 'pipe', 'pipe'], // Explicit stdio configuration
+      detached: false // Ensure process is not detached
     });
 
     let stdout = '';
     let stderr = '';
+    let isResolved = false;
+
+    // Set up timeout
+    const timeout = setTimeout(() => {
+      if (!isResolved) {
+        console.log(`⏰ Python script ${scriptPath} timed out after ${timeoutMs/1000} seconds`);
+        isResolved = true;
+        
+        // Kill the process tree
+        try {
+          process.kill(-pythonProcess.pid, 'SIGTERM');
+        } catch (e) {
+          console.error('Error killing process:', e);
+          try {
+            pythonProcess.kill('SIGKILL');
+          } catch (e2) {
+            console.error('Error force killing process:', e2);
+          }
+        }
+        
+        reject(new Error(`Python script ${scriptPath} timed out after ${timeoutMs/1000} seconds`));
+      }
+    }, timeoutMs);
 
     pythonProcess.stdout.on('data', (data) => {
       stdout += data.toString();
@@ -79,10 +104,33 @@ function runPythonScript(scriptPath, args = []) {
     });
 
     pythonProcess.on('close', (code) => {
-      if (code === 0) {
-        resolve({ stdout, stderr, code });
-      } else {
-        reject(new Error(`Python script exited with code ${code}: ${stderr}`));
+      if (!isResolved) {
+        isResolved = true;
+        clearTimeout(timeout);
+        
+        console.log(`🏁 Python script ${scriptPath} finished with code ${code}`);
+        
+        if (code === 0) {
+          resolve({ stdout, stderr, code });
+        } else {
+          reject(new Error(`Python script exited with code ${code}: ${stderr}`));
+        }
+      }
+    });
+
+    pythonProcess.on('error', (error) => {
+      if (!isResolved) {
+        isResolved = true;
+        clearTimeout(timeout);
+        console.error(`❌ Python script ${scriptPath} error:`, error);
+        reject(error);
+      }
+    });
+
+    // Handle process cleanup on exit
+    pythonProcess.on('exit', (code, signal) => {
+      if (!isResolved) {
+        console.log(`🚪 Python script ${scriptPath} exited with code ${code}, signal ${signal}`);
       }
     });
   });
@@ -186,6 +234,20 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       metadata.completedTime = new Date().toISOString();
       await fs.writeFile(path.join(datasetDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
       
+      // Clear progress status - extraction is done
+      const progressPath = path.join(__dirname, 'progress.json');
+      try {
+        await fs.writeFile(progressPath, JSON.stringify({
+          status: 'completed',
+          message: 'Extrakce dokončena úspěšně',
+          progress: 100,
+          timestamp: new Date().toISOString()
+        }));
+        console.log('✅ Progress status updated to completed');
+      } catch (progressError) {
+        console.error('Error updating progress status:', progressError);
+      }
+      
       // Copy to public folder for current viewing
       const sourcePath = path.join(datasetDir, 'extracted.csv');
       const destPath = path.join(__dirname, 'public', 'videa_s_extrahovanymi_info.csv');
@@ -202,6 +264,20 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       metadata.status = 'error';
       metadata.error = extractError.message;
       await fs.writeFile(path.join(datasetDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+      
+      // Clear progress status - extraction failed
+      const progressPath = path.join(__dirname, 'progress.json');
+      try {
+        await fs.writeFile(progressPath, JSON.stringify({
+          status: 'error',
+          message: `Extrakce selhala: ${extractError.message}`,
+          progress: 0,
+          timestamp: new Date().toISOString()
+        }));
+        console.log('❌ Progress status updated to error');
+      } catch (progressError) {
+        console.error('Error updating progress status:', progressError);
+      }
     }
 
   } catch (error) {
