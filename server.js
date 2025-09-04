@@ -111,10 +111,19 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     const datasetDir = path.join(datasetsDir, datasetId);
     
     console.log(`Processing file: ${filename} -> Dataset ID: ${datasetId}`);
+    console.log(`Current working directory: ${process.cwd()}`);
+    console.log(`__dirname: ${__dirname}`);
+    console.log(`datasetsDir: ${datasetsDir}`);
 
     // Create dataset directory
-    await fs.mkdir(datasetsDir, { recursive: true });
-    await fs.mkdir(datasetDir, { recursive: true });
+    try {
+      await fs.mkdir(datasetsDir, { recursive: true });
+      await fs.mkdir(datasetDir, { recursive: true });
+      console.log(`Directories created successfully`);
+    } catch (dirError) {
+      console.error('Error creating directories:', dirError);
+      return res.status(500).json({ error: 'Failed to create dataset directory', details: dirError.message });
+    }
 
     // Create metadata
     const metadata = {
@@ -148,7 +157,21 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     // Step 2: Run process_excel.py
     console.log('Running process_excel.py...');
-    const result1 = await runPythonScript('process_excel.py');
+    try {
+      const result1 = await runPythonScript('process_excel.py');
+      console.log('process_excel.py completed successfully');
+      console.log('stdout:', result1.stdout);
+      if (result1.stderr) {
+        console.log('stderr:', result1.stderr);
+      }
+    } catch (pythonError) {
+      console.error('Error running process_excel.py:', pythonError);
+      return res.status(500).json({ 
+        error: 'Failed to process Excel file', 
+        details: pythonError.message,
+        step: 'excel_processing'
+      });
+    }
     
     // Update metadata
     metadata.steps.excel_processed = true;
