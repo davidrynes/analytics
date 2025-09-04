@@ -119,7 +119,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload }) => {
         setProgress(progressData);
 
         // Kontrola dokončení
-        const statusResponse = await fetch('http://localhost:3001/api/status');
+        const statusResponse = await fetch('/api/status');
         const statusResult = await statusResponse.json();
 
         if (statusResult.status === 'completed') {
