@@ -12,13 +12,10 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from the React app build directory
-app.use(express.static(path.join(__dirname, 'build')));
-
 // Configure multer for file upload
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, './'); // Save to current directory where Python scripts are
+    cb(null, '../'); // Save to parent directory where Python scripts are
   },
   filename: (req, file, cb) => {
     cb(null, file.originalname);
@@ -64,10 +61,8 @@ const csvUpload = multer({
 // Helper function to run Python script
 function runPythonScript(scriptPath, args = []) {
   return new Promise((resolve, reject) => {
-    // Use virtual environment Python if available, otherwise fallback to python3
-    const pythonCmd = process.env.NODE_ENV === 'production' ? '/opt/venv/bin/python' : 'python3';
-    const pythonProcess = spawn(pythonCmd, [scriptPath, ...args], {
-      cwd: process.cwd()
+    const pythonProcess = spawn('python3', [scriptPath, ...args], {
+      cwd: path.join(__dirname, '../')
     });
 
     let stdout = '';
@@ -109,25 +104,15 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     const filename = req.file.filename;
     const datasetId = generateDatasetId(filename);
-    // Use current working directory instead of __dirname for Railway compatibility
-    const parentDir = process.cwd();
-    const datasetsDir = path.join(parentDir, 'datasets');
+    const parentDir = path.join(__dirname, '../');
+    const datasetsDir = path.join(__dirname, 'datasets');
     const datasetDir = path.join(datasetsDir, datasetId);
     
     console.log(`Processing file: ${filename} -> Dataset ID: ${datasetId}`);
-    console.log(`Current working directory: ${process.cwd()}`);
-    console.log(`__dirname: ${__dirname}`);
-    console.log(`datasetsDir: ${datasetsDir}`);
 
     // Create dataset directory
-    try {
-      await fs.mkdir(datasetsDir, { recursive: true });
-      await fs.mkdir(datasetDir, { recursive: true });
-      console.log(`Directories created successfully`);
-    } catch (dirError) {
-      console.error('Error creating directories:', dirError);
-      return res.status(500).json({ error: 'Failed to create dataset directory', details: dirError.message });
-    }
+    await fs.mkdir(datasetsDir, { recursive: true });
+    await fs.mkdir(datasetDir, { recursive: true });
 
     // Create metadata
     const metadata = {
@@ -161,22 +146,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     // Step 2: Run process_excel.py
     console.log('Running process_excel.py...');
-    let result1;
-    try {
-      result1 = await runPythonScript('process_excel.py');
-      console.log('process_excel.py completed successfully');
-      console.log('stdout:', result1.stdout);
-      if (result1.stderr) {
-        console.log('stderr:', result1.stderr);
-      }
-    } catch (pythonError) {
-      console.error('Error running process_excel.py:', pythonError);
-      return res.status(500).json({ 
-        error: 'Failed to process Excel file', 
-        details: pythonError.message,
-        step: 'excel_processing'
-      });
-    }
+    const result1 = await runPythonScript('process_excel.py');
     
     // Update metadata
     metadata.steps.excel_processed = true;
@@ -399,214 +369,6 @@ app.post('/api/upload-csv/:datasetId', csvUpload.single('csvFile'), async (req, 
   } catch (error) {
     console.error('Error uploading CSV:', error);
     res.status(500).json({ error: 'Failed to upload CSV file' });
-  }
-});
-
-// API endpoint pro získání seznamu datasetů
-app.get('/api/datasets', async (req, res) => {
-  try {
-    const datasetsDir = path.join(__dirname, 'datasets');
-    const datasets = [];
-    
-    const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
-    
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const datasetPath = path.join(datasetsDir, entry.name);
-        const metadataPath = path.join(datasetPath, 'metadata.json');
-        const extractedPath = path.join(datasetPath, 'extracted.csv');
-        
-        let metadata = {};
-        let hasExtracted = false;
-        
-        try {
-          if (await fs.access(metadataPath).then(() => true).catch(() => false)) {
-            const metadataContent = await fs.readFile(metadataPath, 'utf8');
-            metadata = JSON.parse(metadataContent);
-          }
-          
-          hasExtracted = await fs.access(extractedPath).then(() => true).catch(() => false);
-        } catch (error) {
-          console.error(`Error reading dataset ${entry.name}:`, error);
-        }
-        
-        datasets.push({
-          id: entry.name,
-          name: metadata.name || entry.name,
-          createdAt: metadata.createdAt || entry.name.split('T')[0],
-          hasExtracted,
-          videoCount: metadata.videoCount || 0
-        });
-      }
-    }
-    
-    // Seřadíme podle data vytvoření (nejnovější první)
-    datasets.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
-    res.json(datasets);
-  } catch (error) {
-    console.error('Error listing datasets:', error);
-    res.status(500).json({ error: 'Failed to list datasets' });
-  }
-});
-
-// API endpoint pro smazání datasetu
-app.delete('/api/datasets/:datasetId', async (req, res) => {
-  try {
-    const { datasetId } = req.params;
-    const datasetPath = path.join(__dirname, 'datasets', datasetId);
-    
-    // Ověříme, že cesta existuje a je v datasets složce
-    if (!datasetPath.startsWith(path.join(__dirname, 'datasets'))) {
-      return res.status(400).json({ error: 'Invalid dataset ID' });
-    }
-    
-    // Zkontrolujeme, jestli složka existuje
-    try {
-      await fs.access(datasetPath);
-    } catch (error) {
-      return res.status(404).json({ error: 'Dataset not found' });
-    }
-    
-    // Smažeme celou složku
-    await fs.rm(datasetPath, { recursive: true, force: true });
-    
-    res.json({ message: 'Dataset deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting dataset:', error);
-    res.status(500).json({ error: 'Failed to delete dataset' });
-  }
-});
-
-// API endpoint pro získání nejnovějšího extracted.csv
-app.get('/api/latest-extracted', async (req, res) => {
-  try {
-    const datasetsDir = path.join(__dirname, 'datasets');
-    const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
-    
-    // Najdeme nejnovější dataset s extracted.csv
-    let latestDataset = null;
-    let latestTime = 0;
-    
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const extractedPath = path.join(datasetsDir, entry.name, 'extracted.csv');
-        try {
-          const stats = await fs.stat(extractedPath);
-          if (stats.mtime.getTime() > latestTime) {
-            latestTime = stats.mtime.getTime();
-            latestDataset = entry.name;
-          }
-        } catch (error) {
-          // Soubor neexistuje, pokračujeme
-        }
-      }
-    }
-    
-    if (!latestDataset) {
-      return res.status(404).json({ error: 'No extracted data found' });
-    }
-    
-    const extractedPath = path.join(datasetsDir, latestDataset, 'extracted.csv');
-    const csvContent = await fs.readFile(extractedPath, 'utf8');
-    
-    // Parsujeme CSV
-    const lines = csvContent.split('\n');
-    const headers = lines[0].split(';');
-    const videos = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i].trim()) {
-        const values = lines[i].split(';');
-        const video = {};
-        headers.forEach((header, index) => {
-          video[header.trim()] = values[index] ? values[index].trim() : '';
-        });
-        videos.push(video);
-      }
-    }
-    
-    res.json(videos);
-  } catch (error) {
-    console.error('Error loading latest extracted data:', error);
-    res.status(500).json({ error: 'Failed to load extracted data' });
-  }
-});
-
-// API endpoint pro aktualizaci zdroje videa
-app.post('/api/update-source', async (req, res) => {
-  try {
-    const { videoTitle, newSource } = req.body;
-    
-    if (!videoTitle || !newSource) {
-      return res.status(400).json({ error: 'Video title and new source are required' });
-    }
-    
-    const datasetsDir = path.join(__dirname, 'datasets');
-    const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
-    
-    // Najdeme nejnovější dataset s extracted.csv
-    let latestDataset = null;
-    let latestTime = 0;
-    
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const extractedPath = path.join(datasetsDir, entry.name, 'extracted.csv');
-        try {
-          const stats = await fs.stat(extractedPath);
-          if (stats.mtime.getTime() > latestTime) {
-            latestTime = stats.mtime.getTime();
-            latestDataset = entry.name;
-          }
-        } catch (error) {
-          // Soubor neexistuje, pokračujeme
-        }
-      }
-    }
-    
-    if (!latestDataset) {
-      return res.status(404).json({ error: 'No extracted data found' });
-    }
-    
-    const extractedPath = path.join(datasetsDir, latestDataset, 'extracted.csv');
-    const csvContent = await fs.readFile(extractedPath, 'utf8');
-    
-    // Parsujeme CSV a aktualizujeme zdroj
-    const lines = csvContent.split('\n');
-    const headers = lines[0].split(';');
-    const sourceIndex = headers.findIndex(h => h.trim() === 'Extrahované info');
-    
-    if (sourceIndex === -1) {
-      return res.status(400).json({ error: 'Source column not found' });
-    }
-    
-    let updated = false;
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i].trim()) {
-        const values = lines[i].split(';');
-        const title = values[0] ? values[0].trim() : '';
-        
-        if (title === videoTitle) {
-          values[sourceIndex] = newSource;
-          lines[i] = values.join(';');
-          updated = true;
-          break;
-        }
-      }
-    }
-    
-    if (!updated) {
-      return res.status(404).json({ error: 'Video not found' });
-    }
-    
-    // Uložíme aktualizovaný CSV
-    const updatedCsv = lines.join('\n');
-    await fs.writeFile(extractedPath, updatedCsv, 'utf8');
-    
-    res.json({ message: 'Source updated successfully' });
-  } catch (error) {
-    console.error('Error updating source:', error);
-    res.status(500).json({ error: 'Failed to update source' });
   }
 });
 
