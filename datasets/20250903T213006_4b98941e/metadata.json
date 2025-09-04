@@ -1,0 +1,11 @@
+{
+  "id": "20250903T213006_4b98941e",
+  "filename": "Reporter_Novinky.cz_Sledovanost_videÃ­_-_NOVÃ_20250825-20250831.xlsx",
+  "uploadTime": "2025-09-03T21:30:06.266Z",
+  "status": "completed",
+  "steps": {
+    "excel_processed": true,
+    "extraction_completed": true
+  },
+  "completedTime": "2025-09-03T21:36:39.314Z"
+}
