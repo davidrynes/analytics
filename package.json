@@ -53,7 +53,8 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "server": "node server.js",
-    "dev": "concurrently \"npm run server\" \"npm start\""
+    "dev": "concurrently \"npm run server\" \"npm start\"",
+    "railway": "npm run build && npm run server"
   },
   "eslintConfig": {
     "extends": [

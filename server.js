@@ -12,6 +12,9 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Serve static files from the React app build directory
+app.use(express.static(path.join(__dirname, 'build')));
+
 // Configure multer for file upload
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
