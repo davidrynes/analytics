@@ -64,7 +64,7 @@ function runPythonScript(scriptPath, args = []) {
     // Use virtual environment Python if available, otherwise fallback to python3
     const pythonCmd = process.env.NODE_ENV === 'production' ? '/opt/venv/bin/python' : 'python3';
     const pythonProcess = spawn(pythonCmd, [scriptPath, ...args], {
-      cwd: path.join(__dirname, '../')
+      cwd: process.cwd()
     });
 
     let stdout = '';
@@ -106,8 +106,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     const filename = req.file.filename;
     const datasetId = generateDatasetId(filename);
-    const parentDir = path.join(__dirname, '../');
-    const datasetsDir = path.join(__dirname, 'datasets');
+    // Use current working directory instead of __dirname for Railway compatibility
+    const parentDir = process.cwd();
+    const datasetsDir = path.join(parentDir, 'datasets');
     const datasetDir = path.join(datasetsDir, datasetId);
     
     console.log(`Processing file: ${filename} -> Dataset ID: ${datasetId}`);
