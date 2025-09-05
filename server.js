@@ -658,12 +658,17 @@ app.post('/api/update-source', async (req, res) => {
 });
 
 // API endpoint pro update datasetu
-app.put('/api/datasets/:datasetId/update', async (req, res) => {
+app.put('/api/datasets/:datasetId/update', express.text({ type: 'text/plain', limit: '50mb' }), async (req, res) => {
   try {
     const { datasetId } = req.params;
     const csvContent = req.body;
     
+    console.log(`📝 Update request for dataset: ${datasetId}`);
+    console.log(`📄 Content type: ${typeof csvContent}`);
+    console.log(`📏 Content length: ${csvContent ? csvContent.length : 'null'}`);
+    
     if (!csvContent || typeof csvContent !== 'string') {
+      console.error(`❌ Invalid CSV content: type=${typeof csvContent}, length=${csvContent ? csvContent.length : 'null'}`);
       return res.status(400).json({ error: 'Invalid CSV content' });
     }
     
@@ -716,8 +721,12 @@ app.put('/api/datasets/:datasetId/update', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error updating dataset:', error);
-    res.status(500).json({ error: 'Failed to update dataset' });
+    console.error('❌ Error updating dataset:', error);
+    res.status(500).json({ 
+      error: 'Failed to update dataset', 
+      details: error.message,
+      datasetId: req.params.datasetId
+    });
   }
 });
 
