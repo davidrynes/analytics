@@ -20,7 +20,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 
 class FastVideoInfoExtractor:
-    def __init__(self, csv_file, output_file, max_concurrent=3, retry_failed=True):  # Zvýšeno na 3 pro rychlost
+    def __init__(self, csv_file, output_file, max_concurrent=3, retry_failed=True, batch_size=50):  # Přidán batch_size
         self.csv_file = csv_file
         self.output_file = output_file
         self.data = None
@@ -30,6 +30,7 @@ class FastVideoInfoExtractor:
         self.progress_file = "progress.json"
         self.retry_failed = retry_failed
         self.failed_videos = []  # Seznam videí, která selhala
+        self.batch_size = batch_size  # Velikost dávky pro batch processing
         
         # Seznam různých User-Agent pro rotaci
         self.user_agents = [
@@ -420,8 +421,55 @@ class FastVideoInfoExtractor:
         print(f"✅ Retry dokončen. Celkem výsledků: {len(self.results)}")
         return True
     
+    async def process_batch(self, browser, batch_data, batch_number, total_batches):
+        """Zpracuje jednu dávku videí."""
+        print(f"📦 Zpracovávám dávku {batch_number}/{total_batches} ({len(batch_data)} videí)")
+        
+        # Vytvoření více pages pro concurrent processing v dávce
+        pages = []
+        for i in range(self.max_concurrent):
+            context = await browser.new_context(user_agent=self.get_next_user_agent())
+            page = await context.new_page()
+            pages.append(page)
+        
+        try:
+            # Rozdělení práce mezi pages v dávce
+            tasks = []
+            for idx, (index, row) in enumerate(batch_data.iterrows()):
+                page_index = idx % len(pages)
+                page = pages[page_index]
+                task = self.process_video_worker(page, index, row)
+                tasks.append(task)
+            
+            # Spuštění tasků v dávce s timeout
+            try:
+                batch_timeout = min(15*60, 25*60 // total_batches)  # Max 15 minut na dávku nebo rovnoměrně rozděleno
+                results = await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=batch_timeout
+                )
+            except asyncio.TimeoutError:
+                print(f"⏰ Timeout dávky {batch_number} po {batch_timeout//60} minutách")
+                results = []
+            
+            completed_count = len([r for r in results if r is not None and not isinstance(r, Exception)])
+            print(f"✅ Dávka {batch_number}/{total_batches} dokončena! Zpracováno {completed_count}/{len(batch_data)} videí")
+            
+            # Uložení po každé dávce
+            await self.save_results()
+            
+            return completed_count
+            
+        finally:
+            # Uzavření pages v dávce
+            for page in pages:
+                try:
+                    await page.close()
+                except:
+                    pass
+
     async def run_concurrent(self, max_videos=None):
-        """Spustí RYCHLÉ concurrent zpracování."""
+        """Spustí BATCH zpracování po dávkách."""
         if not await self.load_data():
             return False
         
@@ -429,10 +477,16 @@ class FastVideoInfoExtractor:
         if max_videos:
             data_to_process = self.data.head(max_videos)
         
-        print(f"🚀 Spouštím rychlé zpracování {len(data_to_process)} videí s {self.max_concurrent} concurrent workers")
+        # Rozdělení na dávky
+        total_videos = len(data_to_process)
+        total_batches = (total_videos + self.batch_size - 1) // self.batch_size  # Ceiling division
+        
+        print(f"🚀 Spouštím BATCH zpracování {total_videos} videí")
+        print(f"📦 Rozděleno na {total_batches} dávek po {self.batch_size} videích")
+        print(f"⚙️  {self.max_concurrent} concurrent workers na dávku")
         
         # Inicializace progress
-        self.update_progress(0, len(data_to_process), "starting", "Spouštím zpracování...")
+        self.update_progress(0, total_videos, "starting", "Spouštím batch zpracování...")
         
         async with async_playwright() as p:
             # Detekce prostředí - cloud vs lokální
@@ -474,39 +528,45 @@ class FastVideoInfoExtractor:
                 # Lokální prostředí - non-headless pro debugging
                 browser = await p.chromium.launch(headless=False, slow_mo=500)
             
-            # Vytvoření více pages pro concurrent processing
-            pages = []
-            for i in range(self.max_concurrent):
-                context = await browser.new_context(user_agent=self.get_next_user_agent())
-                page = await context.new_page()
-                pages.append(page)
-            
             try:
-                # Rozdělení práce mezi pages
-                tasks = []
-                for idx, (index, row) in enumerate(data_to_process.iterrows()):
-                    page_index = idx % len(pages)
-                    page = pages[page_index]
-                    task = self.process_video_worker(page, index, row)
-                    tasks.append(task)
+                total_processed = 0
                 
-                # Spuštění všech tasků současně s timeout
-                try:
-                    results = await asyncio.wait_for(
-                        asyncio.gather(*tasks, return_exceptions=True),
-                        timeout=25*60  # 25 minut timeout (5 min rezerva před server timeout)
+                # Zpracování po dávkách
+                for batch_num in range(total_batches):
+                    start_idx = batch_num * self.batch_size
+                    end_idx = min(start_idx + self.batch_size, total_videos)
+                    
+                    # Získání dávky dat
+                    batch_data = data_to_process.iloc[start_idx:end_idx]
+                    
+                    print(f"\n📦 === DÁVKA {batch_num + 1}/{total_batches} ===")
+                    print(f"📊 Videí v dávce: {len(batch_data)} (indexy {start_idx}-{end_idx-1})")
+                    print(f"📈 Celkový pokrok: {len(self.results)}/{total_videos} videí")
+                    
+                    # Zpracování dávky
+                    batch_processed = await self.process_batch(browser, batch_data, batch_num + 1, total_batches)
+                    total_processed += batch_processed
+                    
+                    # Aktualizace celkového progressu
+                    self.update_progress(
+                        len(self.results), 
+                        total_videos, 
+                        "processing", 
+                        f"Dokončena dávka {batch_num + 1}/{total_batches}. Zpracováno {len(self.results)} videí."
                     )
-                except asyncio.TimeoutError:
-                    print("⏰ Dosažen timeout 25 minut - ukládám dosavadní výsledky")
-                    results = []
+                    
+                    # Krátká pauza mezi dávkami pro stabilitu
+                    if batch_num < total_batches - 1:  # Ne po poslední dávce
+                        print(f"⏸️  Pauza 3s mezi dávkami...")
+                        await asyncio.sleep(3)
                 
-                completed_count = len([r for r in results if r is not None and not isinstance(r, Exception)])
-                print(f"✅ Dokončeno! Zpracováno {completed_count} videí")
+                print(f"\n✅ VŠECHNY DÁVKY DOKONČENY!")
+                print(f"📊 Celkem zpracováno: {len(self.results)}/{total_videos} videí")
                 
                 # Finální progress update
-                self.update_progress(completed_count, len(data_to_process), "completed", f"Dokončeno! Zpracováno {completed_count} videí")
+                self.update_progress(len(self.results), total_videos, "completed", f"Dokončeno! Zpracováno {len(self.results)} videí")
                 
-                # Průběžné ukládání
+                # Finální uložení
                 await self.save_results()
                 
                 # Retry selhaných videí
@@ -553,17 +613,34 @@ async def main():
     print("RYCHLÝ SKRIPT PRO EXTRAKCI Z NOVINKY.CZ")
     print("🚀" + "=" * 60)
     
-    # Vytvoření extraktoru s anti-bot ochranou a retry mechanismem
-    extractor = FastVideoInfoExtractor(csv_file, output_file, max_concurrent=3, retry_failed=True)  # 3 workers + retry
-    
     # Možnost limitovat počet videí pro testování
     max_videos = None
-    if len(sys.argv) >= 4:
+    if len(sys.argv) >= 4 and sys.argv[3].strip():  # Kontrola, že argument není prázdný
         try:
             max_videos = int(sys.argv[3])
             print(f"🔢 Limit videí: {max_videos}")
         except ValueError:
             print("⚠️ Neplatný limit videí, zpracovávám všechna")
+    else:
+        print("📊 Zpracovávám všechna videa (bez limitu)")
+    
+    # Možnost nastavit velikost dávky
+    batch_size = 50  # Default batch size
+    if len(sys.argv) >= 5:
+        try:
+            batch_size = int(sys.argv[4])
+            print(f"📦 Velikost dávky: {batch_size}")
+        except ValueError:
+            print("⚠️ Neplatná velikost dávky, používám default 50")
+    
+    # Vytvoření extraktoru s batch processing
+    extractor = FastVideoInfoExtractor(
+        csv_file, 
+        output_file, 
+        max_concurrent=3, 
+        retry_failed=True, 
+        batch_size=batch_size
+    )
     
     # Spuštění rychlé extrakce
     start_time = time.time()

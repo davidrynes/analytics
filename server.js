@@ -212,12 +212,13 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     try {
       // No need to modify script - we pass paths as arguments now
       
-      // Add video limit for faster processing (optional 3rd argument)
-      const videoLimit = 100; // Process only first 100 videos for faster completion
+      // Use batch processing instead of video limit for better reliability
+      const batchSize = 50; // Process 50 videos per batch for optimal performance
       const result2 = await runPythonScript('extract_video_info_fast.py', [
         path.join(datasetDir, 'clean.csv'), 
         path.join(datasetDir, 'extracted.csv'),
-        videoLimit.toString()
+        '', // No video limit - process all videos
+        batchSize.toString()
       ]);
       console.log('Video extraction completed:', result2.stdout);
       
