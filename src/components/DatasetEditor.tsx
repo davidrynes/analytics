@@ -32,6 +32,7 @@ const DatasetEditor: React.FC = () => {
   const [videos, setVideos] = useState<VideoData[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
   const [editingCell, setEditingCell] = useState<{row: number, field: string} | null>(null);
   const [editValue, setEditValue] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -112,26 +113,30 @@ const DatasetEditor: React.FC = () => {
     setEditValue('');
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (editingCell) {
       const newVideos = [...videos];
       (newVideos[editingCell.row] as any)[editingCell.field] = editValue;
       setVideos(newVideos);
       setEditingCell(null);
       setEditValue('');
+      
+      // Automaticky uložit změny na server
+      setAutoSaving(true);
+      await saveDatasetToServer(newVideos);
+      setAutoSaving(false);
     }
   };
 
-  const saveDataset = async () => {
-    if (!selectedDataset || videos.length === 0) return;
+  const saveDatasetToServer = async (videosData: VideoData[] = videos) => {
+    if (!selectedDataset || videosData.length === 0) return false;
     
-    setSaving(true);
     try {
       // Convert videos back to CSV format
-      const headers = Object.keys(videos[0]);
+      const headers = Object.keys(videosData[0]);
       const csvLines = [headers.join(';')];
       
-      videos.forEach(video => {
+      videosData.forEach(video => {
         const values = headers.map(header => (video as any)[header] || '');
         csvLines.push(values.join(';'));
       });
@@ -147,6 +152,25 @@ const DatasetEditor: React.FC = () => {
       });
       
       if (response.ok) {
+        console.log('Changes saved automatically');
+        return true;
+      } else {
+        console.error('Failed to save changes');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error saving changes:', error);
+      return false;
+    }
+  };
+
+  const saveDataset = async () => {
+    if (!selectedDataset || videos.length === 0) return;
+    
+    setSaving(true);
+    try {
+      const success = await saveDatasetToServer();
+      if (success) {
         alert('Dataset byl úspěšně uložen!');
       } else {
         alert('Chyba při ukládání datasetu.');
@@ -180,13 +204,20 @@ const DatasetEditor: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Editor Datasetů</h1>
+        <div>
+          <h1 className="text-3xl font-bold">Editor Datasetů</h1>
+          {autoSaving && (
+            <p className="text-sm text-blue-600 mt-1">
+              💾 Automaticky ukládám změny...
+            </p>
+          )}
+        </div>
         <Button 
           onClick={saveDataset} 
           disabled={!selectedDataset || videos.length === 0 || saving}
           className="bg-green-600 hover:bg-green-700"
         >
-          {saving ? 'Ukládám...' : 'Uložit změny'}
+          {saving ? 'Ukládám...' : 'Uložit vše'}
         </Button>
       </div>
 
