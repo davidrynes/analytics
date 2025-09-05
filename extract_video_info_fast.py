@@ -20,7 +20,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 
 class FastVideoInfoExtractor:
-    def __init__(self, csv_file, output_file, max_concurrent=2, retry_failed=True):  # Sníženo na 2 kvůli anti-bot
+    def __init__(self, csv_file, output_file, max_concurrent=3, retry_failed=True):  # Zvýšeno na 3 pro rychlost
         self.csv_file = csv_file
         self.output_file = output_file
         self.data = None
@@ -317,8 +317,13 @@ class FastVideoInfoExtractor:
                 # Aktualizace progress
                 self.update_progress(len(self.results), len(self.data), "processing")
                 
-                # Anti-bot čekání - musíme být pomalejší
-                await asyncio.sleep(random.uniform(2, 5))  # Pomalejší 2-5s kvůli anti-bot ochraně
+                # Průběžné ukládání každých 10 videí
+                if len(self.results) % 10 == 0:
+                    await self.save_results()
+                    print(f"💾 Průběžné uložení - {len(self.results)} videí")
+                
+                # Anti-bot čekání - zrychleno pro efektivitu
+                await asyncio.sleep(random.uniform(1, 3))  # Zrychleno na 1-3s
                 
                 return result
                 
@@ -403,8 +408,8 @@ class FastVideoInfoExtractor:
                     self.results.append(result)
                     print(f"✅ Retry [{index+1}] Hotovo: {extracted_info[:30] if extracted_info else 'N/A'}...")
                     
-                    # Anti-bot čekání
-                    await asyncio.sleep(random.uniform(3, 6))
+                    # Anti-bot čekání pro retry
+                    await asyncio.sleep(random.uniform(1.5, 3))
                     
                 except Exception as e:
                     print(f"❌ Retry [{index+1}] Chyba: {e}")
@@ -485,8 +490,15 @@ class FastVideoInfoExtractor:
                     task = self.process_video_worker(page, index, row)
                     tasks.append(task)
                 
-                # Spuštění všech tasků současně
-                results = await asyncio.gather(*tasks, return_exceptions=True)
+                # Spuštění všech tasků současně s timeout
+                try:
+                    results = await asyncio.wait_for(
+                        asyncio.gather(*tasks, return_exceptions=True),
+                        timeout=25*60  # 25 minut timeout (5 min rezerva před server timeout)
+                    )
+                except asyncio.TimeoutError:
+                    print("⏰ Dosažen timeout 25 minut - ukládám dosavadní výsledky")
+                    results = []
                 
                 completed_count = len([r for r in results if r is not None and not isinstance(r, Exception)])
                 print(f"✅ Dokončeno! Zpracováno {completed_count} videí")
@@ -520,8 +532,18 @@ class FastVideoInfoExtractor:
 
 async def main():
     """Hlavní funkce."""
-    csv_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T202854_cc5944cd/clean.csv"
-    output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T202854_cc5944cd/extracted.csv"
+    # Čtení argumentů z command line
+    if len(sys.argv) >= 3:
+        csv_file = sys.argv[1]
+        output_file = sys.argv[2]
+    else:
+        # Fallback pro lokální testování
+        csv_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T202854_cc5944cd/clean.csv"
+        output_file = "/Users/david.rynes/Desktop/_DESKTOP/_CODE/statistiky/datasets/20250904T202854_cc5944cd/extracted.csv"
+        print("⚠️ Používám hardcoded cesty - pro produkci předejte argumenty!")
+    
+    print(f"📂 CSV soubor: {csv_file}")
+    print(f"📂 Výstupní soubor: {output_file}")
     
     if not os.path.exists(csv_file):
         print(f"❌ Vstupní soubor {csv_file} neexistuje.")
@@ -532,11 +554,20 @@ async def main():
     print("🚀" + "=" * 60)
     
     # Vytvoření extraktoru s anti-bot ochranou a retry mechanismem
-    extractor = FastVideoInfoExtractor(csv_file, output_file, max_concurrent=2, retry_failed=True)  # 2 workers + retry
+    extractor = FastVideoInfoExtractor(csv_file, output_file, max_concurrent=3, retry_failed=True)  # 3 workers + retry
     
-    # Spuštění rychlé extrakce - všechna videa
+    # Možnost limitovat počet videí pro testování
+    max_videos = None
+    if len(sys.argv) >= 4:
+        try:
+            max_videos = int(sys.argv[3])
+            print(f"🔢 Limit videí: {max_videos}")
+        except ValueError:
+            print("⚠️ Neplatný limit videí, zpracovávám všechna")
+    
+    # Spuštění rychlé extrakce
     start_time = time.time()
-    success = await extractor.run_concurrent()  # Zpracovat všechna videa
+    success = await extractor.run_concurrent(max_videos=max_videos)
     end_time = time.time()
     
     if success:
