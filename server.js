@@ -657,6 +657,70 @@ app.post('/api/update-source', async (req, res) => {
   }
 });
 
+// API endpoint pro update datasetu
+app.put('/api/datasets/:datasetId/update', async (req, res) => {
+  try {
+    const { datasetId } = req.params;
+    const csvContent = req.body;
+    
+    if (!csvContent || typeof csvContent !== 'string') {
+      return res.status(400).json({ error: 'Invalid CSV content' });
+    }
+    
+    const datasetsDir = path.join(__dirname, 'datasets');
+    const datasetDir = path.join(datasetsDir, datasetId);
+    const extractedPath = path.join(datasetDir, 'extracted.csv');
+    
+    // Check if dataset exists
+    try {
+      await fs.access(datasetDir);
+    } catch (error) {
+      return res.status(404).json({ error: 'Dataset not found' });
+    }
+    
+    // Save updated CSV
+    await fs.writeFile(extractedPath, csvContent, 'utf8');
+    
+    // Update metadata
+    const metadataPath = path.join(datasetDir, 'metadata.json');
+    try {
+      const metadataContent = await fs.readFile(metadataPath, 'utf8');
+      const metadata = JSON.parse(metadataContent);
+      metadata.lastModified = new Date().toISOString();
+      metadata.modifiedBy = 'dataset-editor';
+      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+    } catch (metaError) {
+      console.log('Could not update metadata:', metaError);
+    }
+    
+    // Copy to public folder if this is the active dataset
+    const publicPath = path.join(__dirname, 'public', 'videa_s_extrahovanymi_info.csv');
+    try {
+      // Check if this is the currently active dataset by comparing modification times
+      const publicStats = await fs.stat(publicPath);
+      const datasetStats = await fs.stat(extractedPath);
+      
+      // If the dataset was just modified, it's likely the active one
+      if (Math.abs(datasetStats.mtime.getTime() - Date.now()) < 5000) {
+        await fs.copyFile(extractedPath, publicPath);
+        console.log('Updated dataset copied to public folder');
+      }
+    } catch (copyError) {
+      console.log('Could not copy to public folder:', copyError);
+    }
+    
+    res.json({ 
+      message: 'Dataset updated successfully',
+      datasetId: datasetId,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Error updating dataset:', error);
+    res.status(500).json({ error: 'Failed to update dataset' });
+  }
+});
+
 // Serve the React app in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'build')));

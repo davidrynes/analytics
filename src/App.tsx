@@ -5,11 +5,12 @@ import FileUpload from './components/FileUpload';
 import Dashboard from './components/Dashboard';
 import DatasetManager from './components/DatasetManager';
 import ManualSourceEditor from './components/ManualSourceEditor';
+import DatasetEditor from './components/DatasetEditor';
 import GlobalProgress from './components/GlobalProgress';
 import TabbedInterface from './components/TabbedInterface';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'upload' | 'dashboard' | 'datasets' | 'sources'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'dashboard' | 'datasets' | 'sources' | 'editor'>('upload');
 
   const handleDatasetSelected = () => {
     setActiveTab('dashboard');
@@ -30,6 +31,8 @@ const App: React.FC = () => {
         return <DatasetManager onDatasetSelected={handleDatasetSelected} />;
       case 'sources':
         return <ManualSourceEditor />;
+      case 'editor':
+        return <DatasetEditor />;
       default:
         return null;
     }
