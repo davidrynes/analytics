@@ -6,11 +6,12 @@ import Dashboard from './components/Dashboard';
 import DatasetManager from './components/DatasetManager';
 import ManualSourceEditor from './components/ManualSourceEditor';
 import DatasetEditor from './components/DatasetEditor';
+import TrendsAnalysis from './components/TrendsAnalysis';
 import GlobalProgress from './components/GlobalProgress';
 import TabbedInterface from './components/TabbedInterface';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'upload' | 'dashboard' | 'datasets' | 'sources' | 'editor'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'dashboard' | 'datasets' | 'sources' | 'editor' | 'trends'>('upload');
 
   const handleDatasetSelected = () => {
     setActiveTab('dashboard');
@@ -33,6 +34,8 @@ const App: React.FC = () => {
         return <ManualSourceEditor />;
       case 'editor':
         return <DatasetEditor />;
+      case 'trends':
+        return <TrendsAnalysis />;
       default:
         return null;
     }

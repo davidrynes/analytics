@@ -1,11 +1,11 @@
 import React from 'react';
 import { Button } from './ui/button';
-import { Upload, BarChart3, Database, Edit3, Settings } from 'lucide-react';
+import { Upload, BarChart3, Database, Edit3, Settings, TrendingUp } from 'lucide-react';
 
 interface TabbedInterfaceProps {
   children: React.ReactNode;
-  activeTab: 'upload' | 'dashboard' | 'datasets' | 'sources' | 'editor';
-  onTabChange: (tab: 'upload' | 'dashboard' | 'datasets' | 'sources' | 'editor') => void;
+  activeTab: 'upload' | 'dashboard' | 'datasets' | 'sources' | 'editor' | 'trends';
+  onTabChange: (tab: 'upload' | 'dashboard' | 'datasets' | 'sources' | 'editor' | 'trends') => void;
 }
 
 const TabbedInterface: React.FC<TabbedInterfaceProps> = ({ 
@@ -19,6 +19,7 @@ const TabbedInterface: React.FC<TabbedInterfaceProps> = ({
     { id: 'datasets', label: 'Datasety', icon: Database },
     { id: 'sources', label: 'Zdroje', icon: Edit3 },
     { id: 'editor', label: 'Editor', icon: Settings },
+    { id: 'trends', label: 'Trendy', icon: TrendingUp },
   ] as const;
 
   return (
