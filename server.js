@@ -59,7 +59,7 @@ const csvUpload = multer({
 });
 
 // Helper function to run Python script
-function runPythonScript(scriptPath, args = [], timeoutMs = 30 * 60 * 1000) { // 30 minutes timeout
+function runPythonScript(scriptPath, args = [], timeoutMs = 20 * 60 * 1000) { // 20 minutes timeout (reduced)
   return new Promise((resolve, reject) => {
     const pythonProcess = spawn('python3', [scriptPath, ...args], {
       cwd: path.join(__dirname, './'),
@@ -210,22 +210,15 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     // Step 3: Run extraction in background
     console.log('Starting extract_video_info_fast.py...');
     try {
-      // Update extraction script to use dataset-specific paths
-      const extractPath = path.join(parentDir, 'extract_video_info_fast.py');
-      let extractContent = await fs.readFile(extractPath, 'utf8');
+      // No need to modify script - we pass paths as arguments now
       
-      extractContent = extractContent.replace(
-        /csv_file = "[^"]*\.csv"/,
-        `csv_file = "${path.join(datasetDir, 'clean.csv').replace(/\\/g, '/')}"`
-      );
-      extractContent = extractContent.replace(
-        /output_file = "[^"]*\.csv"/,
-        `output_file = "${path.join(datasetDir, 'extracted.csv').replace(/\\/g, '/')}"`
-      );
-      
-      await fs.writeFile(extractPath, extractContent);
-      
-      const result2 = await runPythonScript('extract_video_info_fast.py');
+      // Add video limit for faster processing (optional 3rd argument)
+      const videoLimit = 100; // Process only first 100 videos for faster completion
+      const result2 = await runPythonScript('extract_video_info_fast.py', [
+        path.join(datasetDir, 'clean.csv'), 
+        path.join(datasetDir, 'extracted.csv'),
+        videoLimit.toString()
+      ]);
       console.log('Video extraction completed:', result2.stdout);
       
       // Update metadata
