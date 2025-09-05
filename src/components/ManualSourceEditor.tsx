@@ -40,27 +40,38 @@ const ManualSourceEditor: React.FC = () => {
       // Načteme nejnovější extracted.csv
       const response = await fetch('/api/latest-extracted');
       if (response.ok) {
-        const data = await response.json();
-        setVideos(data);
+        const result = await response.json();
+        // API vrací objekt s 'data' property, ne přímo pole
+        const videosData = Array.isArray(result) ? result : (result.data || []);
+        setVideos(videosData);
       } else {
         console.error('Failed to load videos');
+        setVideos([]);
       }
     } catch (error) {
       console.error('Error loading videos:', error);
+      setVideos([]);
     } finally {
       setLoading(false);
     }
   };
 
   const filterVideos = () => {
+    // Dodatečná ochrana - ujistíme se, že videos je pole
+    if (!Array.isArray(videos)) {
+      console.error('videos is not an array:', videos);
+      setFilteredVideos([]);
+      return;
+    }
+
     if (!searchTerm) {
       setFilteredVideos(videos);
       return;
     }
 
     const filtered = videos.filter(video =>
-      video['Název článku/videa'].toLowerCase().includes(searchTerm.toLowerCase()) ||
-      video['Jméno rubriky'].toLowerCase().includes(searchTerm.toLowerCase())
+      video['Název článku/videa']?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      video['Jméno rubriky']?.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredVideos(filtered);
   };
@@ -113,6 +124,12 @@ const ManualSourceEditor: React.FC = () => {
   };
 
   const getVideosWithoutSource = () => {
+    // Dodatečná ochrana - ujistíme se, že filteredVideos je pole
+    if (!Array.isArray(filteredVideos)) {
+      console.error('filteredVideos is not an array:', filteredVideos);
+      return [];
+    }
+    
     return filteredVideos.filter(video => 
       !video['Extrahované info'] || 
       video['Extrahované info'] === 'N/A' || 
