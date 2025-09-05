@@ -270,72 +270,103 @@ class FastVideoInfoExtractor:
     async def process_video_worker(self, page, index, row):
         """Worker pro zpracování jednoho videa s semaforem."""
         async with self.semaphore:
+            video_title = row['Název článku/videa']
+            print(f"[{index+1}] Zpracovávám: {video_title[:50]}...")
+            
+            extracted_info = None
+            novinky_url = ""
+            extraction_status = "success"
+            
             try:
-                video_title = row['Název článku/videa']
-                print(f"[{index+1}] Zpracovávám: {video_title[:50]}...")
-                
                 # Vyhledání
                 if not await self.search_on_seznam(page, video_title):
-                    if self.retry_failed:
-                        self.failed_videos.append((index, row))
-                    return None
-                
-                # Hledání odkazu
-                novinky_url = await self.find_novinky_link_on_seznam(page, video_title)
-                if not novinky_url:
-                    if self.retry_failed:
-                        self.failed_videos.append((index, row))
-                    return None
-                
-                # Extrakce
-                extracted_info = await self.extract_video_info(page, novinky_url)
-                
-                # VALIDACE před uložením - zabrání HTML kontaminaci
-                clean_extracted_info = extracted_info or "N/A"
-                if len(clean_extracted_info) > 200:  # Příliš dlouhé = možná HTML kontaminace
-                    clean_extracted_info = clean_extracted_info[:100] + "..."
-                    
-                # Odstranění HTML tagů a newlines
-                import re
-                clean_extracted_info = re.sub(r'<[^>]+>', '', clean_extracted_info)
-                clean_extracted_info = clean_extracted_info.replace('\n', ' ').replace('\t', ' ').strip()
-                
-                result = {
-                    'Jméno rubriky': str(row['Jméno rubriky']).strip(),
-                    'Název článku/videa': str(row['Název článku/videa']).strip(),
-                    'Views': int(row['Views']),
-                    'Dokoukanost do 25 %': float(row['Dokoukanost do 25 %']) if pd.notna(row['Dokoukanost do 25 %']) else 0.0,
-                    'Dokoukanost do 50 %': float(row['Dokoukanost do 50 %']) if pd.notna(row['Dokoukanost do 50 %']) else 0.0,
-                    'Dokoukanost do 75 %': float(row['Dokoukanost do 75 %']) if pd.notna(row['Dokoukanost do 75 %']) else 0.0,
-                    'Dokoukanost do 100 %': float(row['Dokoukanost do 100 %']) if pd.notna(row['Dokoukanost do 100 %']) else 0.0,
-                    'Extrahované info': clean_extracted_info,
-                    'Novinky URL': str(novinky_url).strip()
-                }
-                
-                self.results.append(result)
-                print(f"✅ [{index+1}] Hotovo: {extracted_info[:30] if extracted_info else 'N/A'}...")
-                
-                # Aktualizace progress
-                self.update_progress(len(self.results), len(self.data), "processing")
-                
-                # Průběžné ukládání každých 10 videí
-                if len(self.results) % 10 == 0:
-                    await self.save_results()
-                    print(f"💾 Průběžné uložení - {len(self.results)} videí")
-                
-                # Anti-bot čekání - zrychleno pro efektivitu
-                await asyncio.sleep(random.uniform(1, 3))  # Zrychleno na 1-3s
-                
-                return result
-                
+                    print(f"⚠️ [{index+1}] Vyhledávání selhalo")
+                    extraction_status = "search_failed"
+                else:
+                    # Hledání odkazu
+                    novinky_url = await self.find_novinky_link_on_seznam(page, video_title)
+                    if not novinky_url:
+                        print(f"⚠️ [{index+1}] Odkaz nenalezen")
+                        extraction_status = "link_not_found"
+                    else:
+                        # Extrakce
+                        extracted_info = await self.extract_video_info(page, novinky_url)
+                        if not extracted_info:
+                            print(f"⚠️ [{index+1}] Zdroj se nepodařilo extrahovat")
+                            extraction_status = "extraction_failed"
+                        else:
+                            print(f"✅ [{index+1}] Zdroj úspěšně extrahován")
+                            extraction_status = "success"
+                            
             except Exception as e:
-                print(f"❌ [{index+1}] Chyba: {e}")
+                print(f"❌ [{index+1}] Chyba při zpracování: {e}")
+                extraction_status = "error"
+            
+            # Určení finálního zdroje na základě statusu
+            if extraction_status == "success" and extracted_info:
+                clean_extracted_info = extracted_info
+            elif extraction_status == "search_failed":
+                clean_extracted_info = "Zdroj nenalezen - vyhledávání selhalo"
                 if self.retry_failed:
                     self.failed_videos.append((index, row))
-                return None
+            elif extraction_status == "link_not_found":
+                clean_extracted_info = "Zdroj nenalezen - odkaz nenalezen"
+                if self.retry_failed:
+                    self.failed_videos.append((index, row))
+            elif extraction_status == "extraction_failed":
+                clean_extracted_info = "Zdroj nenalezen - extrakce selhala"
+                if self.retry_failed:
+                    self.failed_videos.append((index, row))
+            else:
+                clean_extracted_info = "Zdroj nenalezen - neznámá chyba"
+                if self.retry_failed:
+                    self.failed_videos.append((index, row))
+            
+            # VALIDACE a čištění extrahovaného info
+            if len(clean_extracted_info) > 200:  # Příliš dlouhé = možná HTML kontaminace
+                clean_extracted_info = clean_extracted_info[:100] + "..."
+                
+            # Odstranění HTML tagů a newlines
+            import re
+            clean_extracted_info = re.sub(r'<[^>]+>', '', clean_extracted_info)
+            clean_extracted_info = clean_extracted_info.replace('\n', ' ').replace('\t', ' ').strip()
+            
+            # VŽDY vytvoříme záznam - i pro neúspěšné extrakce
+            result = {
+                'Jméno rubriky': str(row['Jméno rubriky']).strip(),
+                'Název článku/videa': str(row['Název článku/videa']).strip(),
+                'Views': int(row['Views']),
+                'Dokoukanost do 25 %': float(row['Dokoukanost do 25 %']) if pd.notna(row['Dokoukanost do 25 %']) else 0.0,
+                'Dokoukanost do 50 %': float(row['Dokoukanost do 50 %']) if pd.notna(row['Dokoukanost do 50 %']) else 0.0,
+                'Dokoukanost do 75 %': float(row['Dokoukanost do 75 %']) if pd.notna(row['Dokoukanost do 75 %']) else 0.0,
+                'Dokoukanost do 100 %': float(row['Dokoukanost do 100 %']) if pd.notna(row['Dokoukanost do 100 %']) else 0.0,
+                'Extrahované info': clean_extracted_info,
+                'Novinky URL': str(novinky_url).strip() if novinky_url else ""
+            }
+            
+            self.results.append(result)
+            
+            # Logování podle statusu
+            if extraction_status == "success":
+                print(f"✅ [{index+1}] Hotovo: {extracted_info[:30] if extracted_info else 'N/A'}...")
+            else:
+                print(f"⚠️ [{index+1}] Uloženo s chybou: {clean_extracted_info[:50]}...")
+            
+            # Aktualizace progress
+            self.update_progress(len(self.results), len(self.data), "processing")
+            
+            # Průběžné ukládání každých 10 videí
+            if len(self.results) % 10 == 0:
+                await self.save_results()
+                print(f"💾 Průběžné uložení - {len(self.results)} videí")
+            
+            # Anti-bot čekání - zrychleno pro efektivitu
+            await asyncio.sleep(random.uniform(1, 3))  # Zrychleno na 1-3s
+            
+            return result
     
     async def retry_failed_videos(self):
-        """Zkusí znovu zpracovat videa, která selhala."""
+        """Zkusí znovu zpracovat videa, která selhala a aktualizuje jejich záznamy."""
         if not self.failed_videos:
             print("✅ Žádná videa k retry")
             return True
@@ -368,46 +399,52 @@ class FastVideoInfoExtractor:
                 'User-Agent': self.get_next_user_agent()
             })
             
+            retry_success_count = 0
+            
             # Zpracování selhaných videí
             for index, row in self.failed_videos:
                 try:
-                    print(f"🔄 Retry [{index+1}]: {row['Název článku/videa'][:50]}...")
+                    video_title = row['Název článku/videa']
+                    print(f"🔄 Retry [{index+1}]: {video_title[:50]}...")
+                    
+                    extracted_info = None
+                    novinky_url = ""
+                    retry_success = False
                     
                     # Vyhledání
-                    if not await self.search_on_seznam(page, row['Název článku/videa']):
-                        continue
+                    if await self.search_on_seznam(page, video_title):
+                        # Hledání odkazu
+                        novinky_url = await self.find_novinky_link_on_seznam(page, video_title)
+                        if novinky_url:
+                            # Extrakce
+                            extracted_info = await self.extract_video_info(page, novinky_url)
+                            if extracted_info:
+                                retry_success = True
                     
-                    # Hledání odkazu
-                    novinky_url = await self.find_novinky_link_on_seznam(page, row['Název článku/videa'])
-                    if not novinky_url:
-                        continue
-                    
-                    # Extrakce
-                    extracted_info = await self.extract_video_info(page, novinky_url)
-                    
-                    # Uložení výsledku
-                    clean_extracted_info = extracted_info or "N/A"
-                    if len(clean_extracted_info) > 200:
-                        clean_extracted_info = clean_extracted_info[:100] + "..."
-                    
-                    import re
-                    clean_extracted_info = re.sub(r'<[^>]+>', '', clean_extracted_info)
-                    clean_extracted_info = clean_extracted_info.replace('\n', ' ').replace('\t', ' ').strip()
-                    
-                    result = {
-                        'Jméno rubriky': str(row['Jméno rubriky']).strip(),
-                        'Název článku/videa': str(row['Název článku/videa']).strip(),
-                        'Views': int(row['Views']),
-                        'Dokoukanost do 25 %': float(row['Dokoukanost do 25 %']) if pd.notna(row['Dokoukanost do 25 %']) else 0.0,
-                        'Dokoukanost do 50 %': float(row['Dokoukanost do 50 %']) if pd.notna(row['Dokoukanost do 50 %']) else 0.0,
-                        'Dokoukanost do 75 %': float(row['Dokoukanost do 75 %']) if pd.notna(row['Dokoukanost do 75 %']) else 0.0,
-                        'Dokoukanost do 100 %': float(row['Dokoukanost do 100 %']) if pd.notna(row['Dokoukanost do 100 %']) else 0.0,
-                        'Extrahované info': clean_extracted_info,
-                        'Novinky URL': str(novinky_url).strip()
-                    }
-                    
-                    self.results.append(result)
-                    print(f"✅ Retry [{index+1}] Hotovo: {extracted_info[:30] if extracted_info else 'N/A'}...")
+                    # Najdeme existující záznam v results a aktualizujeme ho
+                    for i, result in enumerate(self.results):
+                        if (result['Název článku/videa'] == video_title and 
+                            result['Jméno rubriky'] == row['Jméno rubriky']):
+                            
+                            if retry_success:
+                                # Úspěšný retry - aktualizujeme zdroj
+                                clean_extracted_info = extracted_info
+                                if len(clean_extracted_info) > 200:
+                                    clean_extracted_info = clean_extracted_info[:100] + "..."
+                                
+                                import re
+                                clean_extracted_info = re.sub(r'<[^>]+>', '', clean_extracted_info)
+                                clean_extracted_info = clean_extracted_info.replace('\n', ' ').replace('\t', ' ').strip()
+                                
+                                self.results[i]['Extrahované info'] = clean_extracted_info
+                                self.results[i]['Novinky URL'] = str(novinky_url).strip()
+                                
+                                print(f"✅ Retry [{index+1}] Úspěšný! Aktualizován zdroj: {extracted_info[:30]}...")
+                                retry_success_count += 1
+                            else:
+                                # Retry selhal - ponecháme původní chybový záznam
+                                print(f"⚠️ Retry [{index+1}] Selhal - ponechávám původní chybový záznam")
+                            break
                     
                     # Anti-bot čekání pro retry
                     await asyncio.sleep(random.uniform(1.5, 3))
@@ -418,7 +455,7 @@ class FastVideoInfoExtractor:
             
             await browser.close()
         
-        print(f"✅ Retry dokončen. Celkem výsledků: {len(self.results)}")
+        print(f"✅ Retry dokončen. Úspěšně aktualizováno {retry_success_count}/{len(self.failed_videos)} videí")
         return True
     
     async def process_batch(self, browser, batch_data, batch_number, total_batches):
@@ -648,10 +685,31 @@ async def main():
     end_time = time.time()
     
     if success:
-        print(f"\n⚡ RYCHLÁ EXTRAKCE DOKONČENA za {end_time - start_time:.1f} sekund! ⚡")
-        print(f"📊 Statistiky: Úspěšně zpracováno {len(extractor.results)} z {len(extractor.data)} videí")
-        print(f"🔄 Selhaných videí: {len(extractor.failed_videos) if hasattr(extractor, 'failed_videos') else 0}")
-        print(f"🌐 Prostředí: {'CLOUD' if os.environ.get('PORT') else 'LOKÁLNÍ'}")
+        print(f"\n⚡ BATCH EXTRAKCE DOKONČENA za {end_time - start_time:.1f} sekund! ⚡")
+        
+        # Spočítáme statistiky úspěšných a neúspěšných extrakcí
+        successful_extractions = 0
+        failed_extractions = 0
+        
+        for result in extractor.results:
+            if result['Extrahované info'].startswith('Zdroj nenalezen'):
+                failed_extractions += 1
+            else:
+                successful_extractions += 1
+        
+        total_videos = len(extractor.results)
+        success_rate = (successful_extractions / total_videos * 100) if total_videos > 0 else 0
+        
+        print(f"📊 Statistiky:")
+        print(f"   • Celkem zpracováno: {total_videos} videí")
+        print(f"   • ✅ Úspěšné extrakce: {successful_extractions} ({success_rate:.1f}%)")
+        print(f"   • ⚠️  Neúspěšné extrakce: {failed_extractions} ({100-success_rate:.1f}%)")
+        print(f"   • 🔄 Retry pokusů: {len(extractor.failed_videos) if hasattr(extractor, 'failed_videos') else 0}")
+        print(f"   • 🌐 Prostředí: {'CLOUD' if os.environ.get('PORT') else 'LOKÁLNÍ'}")
+        print(f"   • 📦 Batch velikost: {extractor.batch_size}")
+        
+        if failed_extractions > 0:
+            print(f"\n💡 Tip: Videa s 'Zdroj nenalezen' můžete dodatečně upravit v Dataset Editoru")
     else:
         print(f"\n❌ EXTRAKCE SELHALA")
 
