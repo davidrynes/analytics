@@ -217,22 +217,59 @@ class FastVideoInfoExtractor:
                 await page.wait_for_timeout(1000)  # Zvýšeno na 1s pro lepší načtení
                 print(f"✅ Stránka načtena úspěšně")
                 
-                # Rychlé přijetí cookies (pouze první pokus)
+                # ROBUSTNÍ přijetí cookies/popup (pouze první pokus)
                 if attempt == 0:
                     try:
-                        cookie_button = page.locator("button[data-testid='cw-button-agree-with-ads'], button:has-text('Souhlasím')")
-                        if await cookie_button.count() > 0:
-                            await cookie_button.click()
-                            await page.wait_for_timeout(300)  # ZKRÁCENO na 300ms
-                    except:
-                        pass
+                        print("🔘 Hledám a odklikávám popup okno...")
+                        popup_handled = False
+                        
+                        # Strategie 1: Původní selektor + rozšíření
+                        popup_selectors = [
+                            "button[data-testid='cw-button-agree-with-ads']",
+                            "button:has-text('Souhlasím')",
+                            "button:has-text('Přijmout')",
+                            "button:has-text('Přijmout vše')",
+                            "button:has-text('Akceptuji')",
+                            "button:has-text('OK')",
+                            "[data-testid*='accept']",
+                            "[data-testid*='consent']",
+                            "[id*='accept']",
+                            "[class*='accept']",
+                            "[class*='consent']"
+                        ]
+                        
+                        for selector in popup_selectors:
+                            try:
+                                elements = page.locator(selector)
+                                count = await elements.count()
+                                if count > 0:
+                                    for i in range(count):
+                                        element = elements.nth(i)
+                                        if await element.is_visible():
+                                            await element.click()
+                                            print(f"✅ Popup odkliknuto: {selector}")
+                                            popup_handled = True
+                                            await page.wait_for_timeout(1000)
+                                            break
+                                if popup_handled:
+                                    break
+                            except Exception as e:
+                                continue
+                        
+                        if not popup_handled:
+                            print("⚠️ Popup nebyl automaticky odkliknut")
+                    except Exception as e:
+                        print(f"❌ Chyba při popup handling: {e}")
                 
                 # ROZŠÍŘENÉ hledání zdrojů - více strategií
                 video_info = None
                 
                 # 1. Hledání pomocí různých selektorů pro zdroj
                 selectors_to_try = [
-                    "span.f_bJ",  # Původní selektor - hlavní cíl
+                    ".f_bK",                 # Specifický selektor pro Novinky.cz - "Video: Škoda Auto"
+                    "figcaption .f_bK",      # Ještě specifičtější v figcaption
+                    "span.f_bK",             # Přesný span s třídou f_bK
+                    "span.f_bJ",             # Původní selektor - hlavní cíl
                     "div.ogm-container span.f_bJ",  # V ogm-container
                     "div.ogm-main-media__container span.f_bJ",  # V media kontejneru
                     "p.c_br span.f_bJ",  # V odstavci s třídou c_br
@@ -286,7 +323,40 @@ class FastVideoInfoExtractor:
                         print(f"❌ Chyba při zkoušení selektoru '{selector}': {e}")
                         continue  # Zkus další selektor
                 
-                # 2. Pokud stále nic, zkusme najít text obsahující klíčová slova
+                # 2. Pokud stále nic, zkusme najít text obsahující "Video:"
+                if not video_info:
+                    try:
+                        print("🔍 Hledám text obsahující 'Video:'...")
+                        # Najdi všechny elementy obsahující "Video:"
+                        video_elements = page.locator("*:has-text('Video:')")
+                        count = await video_elements.count()
+                        print(f"   Nalezeno {count} elementů s 'Video:'")
+                        
+                        for i in range(min(count, 5)):  # Zkus prvních 5
+                            element = video_elements.nth(i)
+                            text = await element.text_content()
+                            print(f"   Element {i}: '{text}'")
+                            
+                            if text and "Video:" in text:
+                                # Najdi řádek s "Video:"
+                                lines = text.split('\n')
+                                for line in lines:
+                                    line = line.strip()
+                                    if "Video:" in line and len(line) < 100:
+                                        # Najdi pozici "Video:" a extrahuj část za ní
+                                        video_pos = line.find("Video:")
+                                        if video_pos >= 0:
+                                            source_part = line[video_pos + 6:].strip()  # Odstraň "Video:"
+                                            if source_part and len(source_part) > 2:
+                                                video_info = source_part
+                                                print(f"🎯 Nalezen zdroj z 'Video:': {video_info}")
+                                                break
+                                if video_info:
+                                    break
+                    except Exception as e:
+                        print(f"❌ Chyba při hledání 'Video:': {e}")
+                
+                # 3. Pokud stále nic, zkusme najít text obsahující známé zdroje
                 if not video_info:
                     try:
                         # Hledej text obsahující známé zdroje
@@ -311,8 +381,7 @@ class FastVideoInfoExtractor:
                     except Exception as e:
                         pass
                 
-                if video_info and video_info.startswith("Video:"):
-                    video_info = video_info[6:].strip()
+                # Video: prefix už byl odstraněn výše
                 
                 # Pokud máme validní info, vrátíme ho
                 if video_info and len(video_info) > 3:
