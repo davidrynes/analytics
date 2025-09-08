@@ -310,15 +310,19 @@ class FastVideoInfoExtractor:
                                     if 3 <= len(clean_text) <= 200:
                                         # Pokud obsahuje "Video:", extrahuj jen část za ním
                                         if "Video:" in clean_text:
-                                            video_match = re.search(r'Video:\s*([A-Za-z0-9\s\-\.]{1,30}?)(?=\s|[^\w\s]|$)', clean_text)
+                                            # ROZŠÍŘENÝ regex - zachytí i čárky, lomítka a české znaky ve zdrojích
+                                            video_match = re.search(r'Video:\s*([A-Za-z0-9\s,/\-\.áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]{1,60}?)(?=\s*$|[^\w\s,/\-\.áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ])', clean_text)
                                             if video_match:
                                                 source_part = video_match.group(1).strip()
-                                                # Vyčisti source_part
-                                                clean_match = re.match(r'^([A-Za-z0-9]{1,20}(?:\s+[A-Za-z0-9]{1,20})?)', source_part)
+                                                # Vyčisti source_part - ROZŠÍŘENÝ regex pro složitější zdroje
+                                                # Zachytí: "Pavel Karban, Novinky", "Facebook/Pethes Bálint", "ČT24", "Reuters/AP" atd.
+                                                clean_match = re.match(r'^([A-Za-z0-9\s,/\-\.áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]{2,60})', source_part)
                                                 if clean_match:
                                                     source_part = clean_match.group(1).strip()
+                                                    # Odstraň trailing čárky, tečky nebo lomítka
+                                                    source_part = re.sub(r'[,./\-]+$', '', source_part).strip()
                                                 
-                                                if (source_part and len(source_part) >= 2 and len(source_part) <= 30 and
+                                                if (source_part and len(source_part) >= 2 and len(source_part) <= 60 and
                                                     not any(char in source_part.lower() for char in ['http', 'www', '.cz', '.com'])):
                                                     video_info = source_part
                                                     print(f"🎯 Nalezen zdroj pomocí '{selector}' (Video: regex): {source_part}")
@@ -360,24 +364,26 @@ class FastVideoInfoExtractor:
                             
                             if text and "Video:" in text:
                                 # Použij regex pro nalezení "Video:" a následného textu
-                                # Pattern hledá "Video:" (i když je nalepené) a zachytí text za ním
-                                video_pattern = r'Video:\s*([A-Za-z0-9\s\-\.]{1,30}?)(?=\s|[^\w\s]|$)'
+                                # ROZŠÍŘENÝ pattern - zachytí i čárky, lomítka a české znaky ve zdrojích
+                                video_pattern = r'Video:\s*([A-Za-z0-9\s,/\-\.áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]{1,60}?)(?=\s*$|[^\w\s,/\-\.áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ])'
                                 matches = re.finditer(video_pattern, text)
                                 
                                 for match in matches:
                                     source_part = match.group(1).strip()
                                     print(f"   Regex match: '{source_part}'")
                                     
-                                    # Vyčisti source_part - vezmi jen první slovo nebo dvě
-                                    # Pro zdroje jako "AP", "ČTK", "Reuters" atd.
-                                    clean_match = re.match(r'^([A-Za-z0-9]{1,20}(?:\s+[A-Za-z0-9]{1,20})?)', source_part)
+                                    # Vyčisti source_part - ROZŠÍŘENÝ regex pro složitější zdroje
+                                    # Zachytí: "Pavel Karban, Novinky", "Facebook/Pethes Bálint", "ČT24", "Reuters/AP" atd.
+                                    clean_match = re.match(r'^([A-Za-z0-9\s,/\-\.áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]{2,60})', source_part)
                                     if clean_match:
                                         source_part = clean_match.group(1).strip()
+                                        # Odstraň trailing čárky, tečky nebo lomítka
+                                        source_part = re.sub(r'[,./\-]+$', '', source_part).strip()
                                     
                                     # Kontrola, že je to validní zdroj (ne náhodný text)
                                     if (source_part and 
                                         len(source_part) >= 2 and 
-                                        len(source_part) <= 30 and
+                                        len(source_part) <= 60 and
                                         not any(char in source_part.lower() for char in ['http', 'www', '.cz', '.com'])):
                                         video_info = source_part
                                         print(f"🎯 Nalezen zdroj z 'Video:' regex: {video_info}")
