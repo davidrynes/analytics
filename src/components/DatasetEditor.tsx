@@ -196,9 +196,15 @@ const DatasetEditor: React.FC = () => {
   const paginatedVideos = filteredVideos.slice(startIndex, startIndex + itemsPerPage);
 
   const editableFields = [
-    'Jméno rubriky',
     'Název článku/videa', 
     'Extrahované info'
+  ];
+
+  // Sloupce k zobrazení v editoru (jen ty důležité)
+  const displayFields = [
+    'Název článku/videa',
+    'Extrahované info', 
+    'Novinky URL'
   ];
 
   return (
@@ -252,7 +258,7 @@ const DatasetEditor: React.FC = () => {
             <CardContent className="pt-6">
               <div className="flex gap-4 items-center">
                 <Input
-                  placeholder="Hledat podle názvu, rubriky nebo zdroje..."
+                  placeholder="Hledat podle názvu videa nebo zdroje..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="flex-1"
@@ -279,13 +285,7 @@ const DatasetEditor: React.FC = () => {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-12">#</TableHead>
-                        <TableHead className="min-w-[120px]">Rubrika</TableHead>
-                        <TableHead className="min-w-[300px]">Název videa</TableHead>
-                        <TableHead className="w-20">Views</TableHead>
-                        <TableHead className="w-20">25%</TableHead>
-                        <TableHead className="w-20">50%</TableHead>
-                        <TableHead className="w-20">75%</TableHead>
-                        <TableHead className="w-20">100%</TableHead>
+                        <TableHead className="min-w-[400px]">Název videa</TableHead>
                         <TableHead className="min-w-[200px]">Zdroj</TableHead>
                         <TableHead className="min-w-[300px]">URL</TableHead>
                       </TableRow>
@@ -298,46 +298,49 @@ const DatasetEditor: React.FC = () => {
                             <TableCell className="font-medium">
                               {actualIndex + 1}
                             </TableCell>
-                            {Object.entries(video).map(([field, value]) => (
-                              <TableCell key={field} className="max-w-[300px]">
-                                {editingCell?.row === actualIndex && editingCell?.field === field ? (
-                                  <div className="flex gap-2">
-                                    <Input
-                                      value={editValue}
-                                      onChange={(e) => setEditValue(e.target.value)}
-                                      className="h-8"
-                                      autoFocus
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') saveEdit();
-                                        if (e.key === 'Escape') cancelEditing();
+                            {displayFields.map((field) => {
+                              const value = video[field as keyof VideoData] || '';
+                              return (
+                                <TableCell key={field} className="max-w-[400px]">
+                                  {editingCell?.row === actualIndex && editingCell?.field === field ? (
+                                    <div className="flex gap-2">
+                                      <Input
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        className="h-8"
+                                        autoFocus
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') saveEdit();
+                                          if (e.key === 'Escape') cancelEditing();
+                                        }}
+                                      />
+                                      <Button size="sm" onClick={saveEdit} className="h-8 px-2">
+                                        ✓
+                                      </Button>
+                                      <Button size="sm" variant="outline" onClick={cancelEditing} className="h-8 px-2">
+                                        ✕
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div
+                                      className={`truncate ${
+                                        editableFields.includes(field)
+                                          ? 'cursor-pointer hover:bg-gray-100 p-1 rounded'
+                                          : ''
+                                      }`}
+                                      onClick={() => {
+                                        if (editableFields.includes(field)) {
+                                          startEditing(actualIndex, field, value);
+                                        }
                                       }}
-                                    />
-                                    <Button size="sm" onClick={saveEdit} className="h-8 px-2">
-                                      ✓
-                                    </Button>
-                                    <Button size="sm" variant="outline" onClick={cancelEditing} className="h-8 px-2">
-                                      ✕
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <div
-                                    className={`truncate ${
-                                      editableFields.includes(field)
-                                        ? 'cursor-pointer hover:bg-gray-100 p-1 rounded'
-                                        : ''
-                                    }`}
-                                    onClick={() => {
-                                      if (editableFields.includes(field)) {
-                                        startEditing(actualIndex, field, value);
-                                      }
-                                    }}
-                                    title={value}
-                                  >
-                                    {value || (editableFields.includes(field) ? '(klikněte pro editaci)' : '-')}
-                                  </div>
-                                )}
-                              </TableCell>
-                            ))}
+                                      title={value}
+                                    >
+                                      {value || (editableFields.includes(field) ? '(klikněte pro editaci)' : '-')}
+                                    </div>
+                                  )}
+                                </TableCell>
+                              );
+                            })}
                           </TableRow>
                         );
                       })}
