@@ -38,6 +38,7 @@ const DatasetEditor: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
+  const [extractingVideo, setExtractingVideo] = useState<number | null>(null);
 
   useEffect(() => {
     loadDatasets();
@@ -183,6 +184,57 @@ const DatasetEditor: React.FC = () => {
     }
   };
 
+  const extractSingleVideo = async (videoIndex: number) => {
+    if (!selectedDataset || extractingVideo !== null) return;
+    
+    const video = videos[videoIndex];
+    if (!video) return;
+
+    setExtractingVideo(videoIndex);
+    
+    try {
+      const response = await fetch('/api/extract-single-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          datasetId: selectedDataset,
+          videoTitle: video['Název článku/videa'],
+          videoIndex: videoIndex
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Update the video in the list
+        const newVideos = [...videos];
+        newVideos[videoIndex] = {
+          ...newVideos[videoIndex],
+          'Extrahované info': result.source || 'Zdroj nenalezen',
+          'Novinky URL': result.url || 'URL nenalezena'
+        };
+        setVideos(newVideos);
+        
+        // Auto-save changes
+        setAutoSaving(true);
+        await saveDatasetToServer(newVideos);
+        setAutoSaving(false);
+        
+        alert(`Extrakce dokončena!\nZdroj: ${result.source || 'Nenalezen'}\nURL: ${result.url || 'Nenalezena'}`);
+      } else {
+        const error = await response.text();
+        alert(`Chyba při extrakci: ${error}`);
+      }
+    } catch (error) {
+      console.error('Error extracting single video:', error);
+      alert('Chyba při extrakci videa');
+    } finally {
+      setExtractingVideo(null);
+    }
+  };
+
   // Filter videos based on search term
   const filteredVideos = videos.filter(video => 
     video['Název článku/videa']?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -197,7 +249,8 @@ const DatasetEditor: React.FC = () => {
 
   const editableFields = [
     'Název článku/videa', 
-    'Extrahované info'
+    'Extrahované info',
+    'Novinky URL'
   ];
 
   // Sloupce k zobrazení v editoru (jen ty důležité)
@@ -288,6 +341,7 @@ const DatasetEditor: React.FC = () => {
                         <TableHead className="min-w-[400px]">Název videa</TableHead>
                         <TableHead className="min-w-[200px]">Zdroj</TableHead>
                         <TableHead className="min-w-[300px]">URL</TableHead>
+                        <TableHead className="w-32">Akce</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -335,12 +389,41 @@ const DatasetEditor: React.FC = () => {
                                       }}
                                       title={value}
                                     >
-                                      {value || (editableFields.includes(field) ? '(klikněte pro editaci)' : '-')}
+                                      {field === 'Novinky URL' && value && value !== 'URL nenalezena' ? (
+                                        <a 
+                                          href={value} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          {value}
+                                        </a>
+                                      ) : (
+                                        value || (editableFields.includes(field) ? '(klikněte pro editaci)' : '-')
+                                      )}
                                     </div>
                                   )}
                                 </TableCell>
                               );
                             })}
+                            
+                            {/* Sloupec s akcemi */}
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => extractSingleVideo(actualIndex)}
+                                disabled={extractingVideo !== null}
+                                className="h-8 px-2 text-xs"
+                              >
+                                {extractingVideo === actualIndex ? (
+                                  '⏳ Extrahuje...'
+                                ) : (
+                                  '🔍 Re-extrakce'
+                                )}
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         );
                       })}

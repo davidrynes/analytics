@@ -257,7 +257,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
                 current: processedVideos,
                 total: totalVideos,
                 status: 'processing',
-                message: `Automatické zpracování: ${processedVideos}/${totalVideos} videí (run ${currentRun})`
+                message: `Automatické zpracování: ${processedVideos}/${totalVideos} videí (run ${currentRun})`,
+                percentage: totalVideos > 0 ? Math.round((processedVideos / totalVideos) * 100) : 0,
+                timestamp: new Date().toISOString()
               }));
             } catch (e) {}
             
@@ -322,6 +324,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
           message: allVideosProcessed ? 'Extrakce dokončena úspěšně' : `Chyba při extrakci: ${processedVideos}/${totalVideos} videí zpracováno`,
           current: processedVideos,
           total: totalVideos,
+          percentage: totalVideos > 0 ? Math.round((processedVideos / totalVideos) * 100) : 0,
           timestamp: new Date().toISOString()
         }));
         console.log(`✅ Progress status updated to ${allVideosProcessed ? 'completed' : 'error'}`);
@@ -352,7 +355,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         await fs.writeFile(progressPath, JSON.stringify({
           status: 'error',
           message: `Extrakce selhala: ${extractError.message}`,
-          progress: 0,
+          current: 0,
+          total: 0,
+          percentage: 0,
           timestamp: new Date().toISOString()
         }));
         console.log('❌ Progress status updated to error');
@@ -393,7 +398,32 @@ app.get('/api/progress', async (req, res) => {
     try {
       const progressData = await fs.readFile(progressPath, 'utf8');
       const progress = JSON.parse(progressData);
-      res.json(progress);
+      
+      // Auto-reset completed/error status after 10 seconds
+      if ((progress.status === 'completed' || progress.status === 'error') && progress.timestamp) {
+        const now = Date.now();
+        const progressTime = new Date(progress.timestamp).getTime();
+        const timeDiff = now - progressTime;
+        
+        // If more than 10 seconds have passed, reset to idle
+        if (timeDiff > 10000) {
+          const idleProgress = { 
+            current: 0, 
+            total: 0, 
+            status: 'idle', 
+            message: 'Čekání na spuštění',
+            percentage: 0 
+          };
+          
+          // Update the file to idle status
+          await fs.writeFile(progressPath, JSON.stringify(idleProgress));
+          res.json(idleProgress);
+        } else {
+          res.json(progress);
+        }
+      } else {
+        res.json(progress);
+      }
     } catch (error) {
       // Default progress if file doesn't exist
       res.json({ 
@@ -816,7 +846,9 @@ app.post('/api/datasets/:datasetId/restart-extraction', async (req, res) => {
             current: processedVideos,
             total: totalVideos,
             status: 'processing',
-            message: `Restart extrakce: ${processedVideos}/${totalVideos} videí (run ${currentRun})`
+            message: `Restart extrakce: ${processedVideos}/${totalVideos} videí (run ${currentRun})`,
+            percentage: totalVideos > 0 ? Math.round((processedVideos / totalVideos) * 100) : 0,
+            timestamp: new Date().toISOString()
           }));
         } catch (e) {}
         
@@ -889,8 +921,10 @@ app.post('/api/datasets/:datasetId/restart-extraction', async (req, res) => {
       await fs.writeFile(progressPath, JSON.stringify({
         current: processedVideos,
         total: totalVideos,
-        status: processedVideos >= totalVideos ? 'completed' : 'partial',
-        message: `Zpracováno ${processedVideos} z ${totalVideos} videí`
+        status: processedVideos >= totalVideos ? 'completed' : 'error',
+        message: `Zpracováno ${processedVideos} z ${totalVideos} videí`,
+        percentage: totalVideos > 0 ? Math.round((processedVideos / totalVideos) * 100) : 0,
+        timestamp: new Date().toISOString()
       }));
     } catch (e) {
       console.log('Could not update progress');
@@ -914,7 +948,9 @@ app.post('/api/datasets/:datasetId/restart-extraction', async (req, res) => {
         current: 0,
         total: 0,
         status: 'error',
-        message: 'Chyba při pokračování extrakce'
+        message: 'Chyba při pokračování extrakce',
+        percentage: 0,
+        timestamp: new Date().toISOString()
       }));
     } catch (e) {}
     
@@ -991,6 +1027,102 @@ app.put('/api/datasets/:datasetId/update', express.text({ type: 'text/plain', li
       details: error.message,
       datasetId: req.params.datasetId
     });
+  }
+});
+
+// Extract single video source
+app.post('/api/extract-single-video', async (req, res) => {
+  try {
+    const { datasetId, videoTitle, videoIndex } = req.body;
+    
+    if (!datasetId || !videoTitle) {
+      return res.status(400).json({ error: 'Dataset ID and video title are required' });
+    }
+    
+    console.log(`🔍 Single video extraction requested for: "${videoTitle}" in dataset ${datasetId}`);
+    
+    const datasetDir = path.join(__dirname, 'datasets', datasetId);
+    
+    // Check if dataset exists
+    try {
+      await fs.access(datasetDir);
+    } catch (error) {
+      return res.status(404).json({ error: 'Dataset not found' });
+    }
+    
+    // Create temporary CSV with just this video
+    const tempCsvPath = path.join(datasetDir, `temp_single_${Date.now()}.csv`);
+    const tempExtractedPath = path.join(datasetDir, `temp_extracted_${Date.now()}.csv`);
+    
+    // CSV header and single row
+    const csvContent = `Jméno rubriky;Název článku/videa;Views;Dokoukanost do 25 %;Dokoukanost do 50 %;Dokoukanost do 75 %;Dokoukanost do 100 %;Extrahované info;Novinky URL
+temp;${videoTitle};1000;0;0;0;0;;`;
+    
+    await fs.writeFile(tempCsvPath, csvContent);
+    
+    try {
+      // Run extraction on single video
+      const result = await runPythonScript('extract_video_info_fast.py', [
+        tempCsvPath,
+        tempExtractedPath,
+        '1', // max_videos = 1
+        '1'  // batch_size = 1
+      ]);
+      
+      console.log('✅ Single video extraction completed:', result.stdout);
+      
+      // Read the extracted result
+      let extractedSource = 'Zdroj nenalezen';
+      let extractedUrl = 'URL nenalezena';
+      
+      try {
+        const extractedContent = await fs.readFile(tempExtractedPath, 'utf8');
+        const lines = extractedContent.split('\n');
+        if (lines.length > 1) {
+          const dataLine = lines[1].split(';');
+          extractedSource = dataLine[7] || 'Zdroj nenalezen';
+          extractedUrl = dataLine[8] || 'URL nenalezena';
+        }
+      } catch (readError) {
+        console.log('Could not read extracted result:', readError);
+      }
+      
+      // Clean up temporary files
+      try {
+        await fs.unlink(tempCsvPath);
+        await fs.unlink(tempExtractedPath);
+      } catch (cleanupError) {
+        console.log('Could not clean up temp files:', cleanupError);
+      }
+      
+      res.json({
+        success: true,
+        source: extractedSource,
+        url: extractedUrl,
+        videoTitle: videoTitle,
+        videoIndex: videoIndex
+      });
+      
+    } catch (extractionError) {
+      console.error('❌ Single video extraction failed:', extractionError);
+      
+      // Clean up temporary files on error
+      try {
+        await fs.unlink(tempCsvPath);
+        await fs.unlink(tempExtractedPath);
+      } catch (cleanupError) {
+        console.log('Could not clean up temp files after error:', cleanupError);
+      }
+      
+      res.status(500).json({ 
+        error: 'Extraction failed', 
+        details: extractionError.message 
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Error in single video extraction endpoint:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
