@@ -284,20 +284,19 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         
         console.log(`🏁 Extraction process completed after ${currentRun} runs`);
       
-      // Check if there are more videos to process
-      const fs = require('fs').promises;
+      // Get final video counts from the last iteration of while loop
       let totalVideos = 0;
       let processedVideos = 0;
       
       try {
         const cleanCsv = await fs.readFile(path.join(datasetDir, 'clean.csv'), 'utf-8');
         const cleanLines = cleanCsv.split('\n').filter(line => line.trim());
-        totalVideos = cleanLines.length - 1; // Minus header
+        totalVideos = cleanLines.length - 1;
         
         try {
           const extractedCsv = await fs.readFile(path.join(datasetDir, 'extracted.csv'), 'utf-8');
           const extractedLines = extractedCsv.split('\n').filter(line => line.trim());
-          processedVideos = extractedLines.length - 1; // Minus header
+          processedVideos = extractedLines.length - 1;
         } catch (e) {
           processedVideos = 0;
         }
@@ -305,28 +304,27 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         console.log('Could not count videos');
       }
       
-      // Update metadata
-      metadata.status = processedVideos >= totalVideos ? 'completed' : 'partial';
-      metadata.steps.extraction_completed = processedVideos >= totalVideos;
+      // Update metadata with final status (while loop determined if all videos processed)
+      metadata.status = allVideosProcessed ? 'completed' : 'partial';
+      metadata.steps.extraction_completed = allVideosProcessed;
       metadata.videos_total = totalVideos;
       metadata.videos_processed = processedVideos;
-      
-      if (processedVideos < totalVideos) {
-        console.log(`⚠️ Partial extraction: ${processedVideos}/${totalVideos} videos processed. Run extraction again to continue.`);
-      }
       metadata.completedTime = new Date().toISOString();
+      
+      console.log(`📊 Final status: ${metadata.status} - ${processedVideos}/${totalVideos} videos processed`);
       await fs.writeFile(path.join(datasetDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
       
       // Clear progress status - extraction is done
       const progressPath = path.join(__dirname, 'progress.json');
       try {
         await fs.writeFile(progressPath, JSON.stringify({
-          status: 'completed',
-          message: 'Extrakce dokončena úspěšně',
-          progress: 100,
+          status: allVideosProcessed ? 'completed' : 'partial',
+          message: allVideosProcessed ? 'Extrakce dokončena úspěšně' : `Částečně dokončeno: ${processedVideos}/${totalVideos} videí`,
+          current: processedVideos,
+          total: totalVideos,
           timestamp: new Date().toISOString()
         }));
-        console.log('✅ Progress status updated to completed');
+        console.log(`✅ Progress status updated to ${allVideosProcessed ? 'completed' : 'partial'}`);
       } catch (progressError) {
         console.error('Error updating progress status:', progressError);
       }
