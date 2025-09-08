@@ -265,28 +265,29 @@ class FastVideoInfoExtractor:
                 # ROZŠÍŘENÉ hledání zdrojů - více strategií
                 video_info = None
                 
-                # 1. Hledání pomocí různých selektorů pro zdroj
+                # 1. Hledání pomocí různých selektorů pro zdroj - PŘESNĚJŠÍ POŘADÍ
                 selectors_to_try = [
-                    ".f_bK",                 # Specifický selektor pro Novinky.cz - "Video: Škoda Auto"
-                    "figcaption .f_bK",      # Ještě specifičtější v figcaption
-                    "span.f_bK",             # Přesný span s třídou f_bK
+                    # Nejspecifičtější selektory první (krátké texty s "Video:")
+                    "span.f_bK",             # Přesný span s třídou f_bK - "Video: AP"
+                    "figcaption .f_bK",      # V figcaption s třídou f_bK
+                    ".f_bK",                 # Obecně třída f_bK
+                    ".w-ContentInfoAuthor__name",  # Specifický pro video info
                     "span.f_bJ",             # Původní selektor - hlavní cíl
                     "div.ogm-container span.f_bJ",  # V ogm-container
                     "div.ogm-main-media__container span.f_bJ",  # V media kontejneru
                     "p.c_br span.f_bJ",  # V odstavci s třídou c_br
-                    "span.f_bJ",  # Obecně span.f_bJ
                     "div.ogm-main-media__container span",  # Obecnější v media kontejneru
-                    "*:has-text('Zdroj:')",  # České "Zdroj:"
-                    "*:has-text('Video:')",  # České "Video:"
-                    "*:has-text('Foto:')",   # České "Foto:"
-                    "*:has-text('Autor:')",  # České "Autor:"
-                    "[class*='source']",     # CSS třída obsahující "source"
                     "[class*='author']",     # CSS třída obsahující "author"
+                    "[class*='source']",     # CSS třída obsahující "source"
                     "[class*='credit']",     # CSS třída obsahující "credit"
-                    "figcaption",            # Často obsahuje autorstvo
                     ".media-source",         # Obvyklá třída pro zdroj
                     ".video-source",         # Specificky pro video
                     ".article-source",       # Pro články
+                    "figcaption",            # Často obsahuje autorstvo - POZDĚJŠÍ
+                    "*:has-text('Zdroj:')",  # České "Zdroj:"
+                    "*:has-text('Video:')",  # České "Video:" - POSLEDNÍ
+                    "*:has-text('Foto:')",   # České "Foto:"
+                    "*:has-text('Autor:')",  # České "Autor:"
                 ]
                 
                 for selector in selectors_to_try:
@@ -305,17 +306,36 @@ class FastVideoInfoExtractor:
                                     # Vyčisti a validuj text
                                     clean_text = text.strip()
                                     
-                                    # Proveř, jestli je to rozumná délka pro zdroj
+                                    # VYLEPŠENÉ FILTROVÁNÍ: preferuj krátké texty s "Video:"
                                     if 3 <= len(clean_text) <= 200:
-                                        # Odstranění prefixů
-                                        for prefix in ['Video:', 'Foto:', 'Zdroj:', 'Autor:']:
-                                            if clean_text.startswith(prefix):
-                                                clean_text = clean_text[len(prefix):].strip()
+                                        # Pokud obsahuje "Video:", extrahuj jen část za ním
+                                        if "Video:" in clean_text:
+                                            video_match = re.search(r'Video:\s*([A-Za-z0-9\s\-\.]{1,30}?)(?=\s|[^\w\s]|$)', clean_text)
+                                            if video_match:
+                                                source_part = video_match.group(1).strip()
+                                                # Vyčisti source_part
+                                                clean_match = re.match(r'^([A-Za-z0-9]{1,20}(?:\s+[A-Za-z0-9]{1,20})?)', source_part)
+                                                if clean_match:
+                                                    source_part = clean_match.group(1).strip()
+                                                
+                                                if (source_part and len(source_part) >= 2 and len(source_part) <= 30 and
+                                                    not any(char in source_part.lower() for char in ['http', 'www', '.cz', '.com'])):
+                                                    video_info = source_part
+                                                    print(f"🎯 Nalezen zdroj pomocí '{selector}' (Video: regex): {source_part}")
+                                                    break
                                         
-                                        if clean_text and len(clean_text) > 2:
-                                            video_info = clean_text
-                                            print(f"🎯 Nalezen zdroj pomocí '{selector}': {clean_text[:50]}...")
-                                            break
+                                        # Jinak standardní zpracování prefixů
+                                        else:
+                                            # Odstranění prefixů
+                                            for prefix in ['Foto:', 'Zdroj:', 'Autor:']:
+                                                if clean_text.startswith(prefix):
+                                                    clean_text = clean_text[len(prefix):].strip()
+                                            
+                                            # Jen pokud je to krátký text (pravděpodobně zdroj, ne název videa)
+                                            if clean_text and 2 < len(clean_text) <= 50:
+                                                video_info = clean_text
+                                                print(f"🎯 Nalezen zdroj pomocí '{selector}': {clean_text[:50]}...")
+                                                break
                             
                             if video_info:
                                 break
