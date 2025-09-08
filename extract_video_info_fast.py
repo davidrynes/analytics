@@ -105,31 +105,59 @@ class FastVideoInfoExtractor:
                 return False
     
     async def find_novinky_link_on_seznam(self, page, video_title):
-        """RYCHLÉ hledání odkazu na Novinky.cz."""
+        """RYCHLÉ hledání odkazu na Novinky.cz s opraveným selektorem."""
         try:
-            novinky_links = page.locator("a[href*='novinky.cz']")
+            # Seznam.cz vrací plné URL, takže použijeme správné selektory
+            selectors_to_try = [
+                "a[href*='www.novinky.cz/clanek']",  # Hlavní selektor pro články
+                "a[href*='novinky.cz/clanek']",      # Fallback bez www
+                "a[href*='www.novinky.cz/video']",   # Pro videa
+                "a[href*='novinky.cz/video']",       # Fallback pro videa
+            ]
             
-            if await novinky_links.count() > 0:
-                best_link = None
-                best_score = 0
-                
-                # Omezíme na prvních 10 odkazů pro rychlost
-                for i in range(min(await novinky_links.count(), 10)):
-                    link = novinky_links.nth(i)
-                    href = await link.get_attribute("href")
+            best_link = None
+            best_score = 0
+            
+            for selector in selectors_to_try:
+                try:
+                    novinky_links = page.locator(selector)
+                    count = await novinky_links.count()
                     
-                    if href and 'novinky.cz' in href and ('/clanek/' in href or '/video/' in href):
-                        link_text = await link.text_content()
-                        if link_text:
-                            score = self.calculate_similarity(video_title.lower(), link_text.lower())
-                            if score > best_score:
-                                best_score = score
-                                best_link = href
-                
-                if best_link and best_score > 0.1:  # Nižší práh pro rychlost
-                    return best_link
-                    
-            return None
+                    if count > 0:
+                        print(f"🔍 Selector '{selector}': nalezeno {count} odkazů")
+                        
+                        # Omezíme na prvních 8 odkazů pro rychlost
+                        for i in range(min(count, 8)):
+                            link = novinky_links.nth(i)
+                            href = await link.get_attribute("href")
+                            link_text = await link.text_content()
+                            
+                            if href and link_text:
+                                # Vyčistíme text od časových značek a dalších rušivých prvků
+                                clean_text = link_text.replace('►', '').replace('0:', '').strip()
+                                
+                                if len(clean_text) > 10:  # Ignorujeme krátké texty jako "novinky.cz"
+                                    score = self.calculate_similarity(video_title.lower(), clean_text.lower())
+                                    print(f"   Link {i+1}: {clean_text[:50]}... (skóre: {score:.3f})")
+                                    
+                                    if score > best_score:
+                                        best_score = score
+                                        best_link = href
+                        
+                        # Pokud našli dobrý odkaz, nemusíme zkoušet další selektory
+                        if best_link and best_score > 0.15:  # Mírně vyšší práh pro lepší přesnost
+                            break
+                            
+                except Exception as e:
+                    print(f"❌ Chyba se selektorem '{selector}': {e}")
+                    continue
+            
+            if best_link and best_score > 0.15:
+                print(f"🎯 Nejlepší odkaz (skóre: {best_score:.3f}): {best_link}")
+                return best_link
+            else:
+                print(f"⚠️ Nenašel jsem dostatečně podobný odkaz (nejlepší skóre: {best_score:.3f})")
+                return None
                 
         except Exception as e:
             print(f"Chyba při hledání odkazu: {e}")
