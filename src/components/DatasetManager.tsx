@@ -127,16 +127,16 @@ const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetSelected }) =>
   const getStatusBadge = (dataset: Dataset) => {
     switch (dataset.status) {
       case 'completed':
-        return <Badge variant="default" className="bg-green-100 text-green-800"><Check className="w-3 h-3 mr-1" />Dokončeno</Badge>;
+        return <Badge variant="default" className="bg-green-100 text-green-800 text-xs h-5"><Check className="w-2 h-2 mr-1" />Dokončeno</Badge>;
       case 'processing':
         const progress = dataset.videos_total && dataset.videos_processed 
           ? ` (${dataset.videos_processed}/${dataset.videos_total})`
           : '';
-        return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Clock className="w-3 h-3 mr-1" />Zpracovává se{progress}</Badge>;
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs h-5"><Clock className="w-2 h-2 mr-1" />Zpracovává se{progress}</Badge>;
       case 'error':
-        return <Badge variant="destructive"><AlertCircle className="w-3 h-3 mr-1" />Chyba</Badge>;
+        return <Badge variant="destructive" className="text-xs h-5"><AlertCircle className="w-2 h-2 mr-1" />Chyba</Badge>;
       default:
-        return <Badge variant="outline">Neznámý</Badge>;
+        return <Badge variant="outline" className="text-xs h-5">Neznámý</Badge>;
     }
   };
 
@@ -192,22 +192,22 @@ const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetSelected }) =>
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Database className="h-4 w-4" />
             Správa souborů
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <CardContent className="pt-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div>
-              <h3 className="text-lg font-semibold mb-4">Nahrát Excel soubor</h3>
+              <h3 className="text-base font-semibold mb-2">Nahrát Excel soubor</h3>
               <FileUpload onUpload={handleFileUpload} />
             </div>
             <div>
-              <h3 className="text-lg font-semibold mb-4">Nahrát zpracovaný CSV</h3>
+              <h3 className="text-base font-semibold mb-2">Nahrát zpracovaný CSV</h3>
               <CsvUpload onUpload={handleDatasetUpload} />
             </div>
           </div>
@@ -215,115 +215,120 @@ const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetSelected }) =>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Dostupné datasety ({datasets.length})</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Dostupné datasety ({datasets.length})</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-3">
           {datasets.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Database className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p>Zatím nebyl nahrán žádný soubor.</p>
-              <p className="text-sm">Nahrajte soubor pomocí formuláře výše.</p>
+            <div className="text-center py-6 text-gray-500">
+              <Database className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+              <p className="text-sm">Zatím nebyl nahrán žádný soubor.</p>
+              <p className="text-xs text-gray-400">Nahrajte soubor pomocí formuláře výše.</p>
             </div>
           ) : (
-          <div className="space-y-4">
-            <div className="text-sm text-gray-600">
+          <div className="space-y-3">
+            <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
               Klikněte na "Aktivovat" pro přepnutí mezi různými Excel soubory.
             </div>
             
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Soubor</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Nahráno</TableHead>
-                  <TableHead>Dokončeno</TableHead>
-                  <TableHead>Akce</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {datasets.map((dataset) => (
-                  <TableRow 
-                    key={dataset.id}
-                    className={activeDataset === dataset.id ? 'bg-blue-50' : ''}
-                  >
-                    <TableCell>
-                      <div className="max-w-xs truncate font-medium" title={getWeekFromFilename(dataset.filename)}>
-                        {getWeekFromFilename(dataset.filename)}
-                      </div>
-                      <div className="text-xs text-gray-500">{dataset.id}</div>
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(dataset)}
-                      {dataset.error && (
-                        <div className="text-xs text-red-600 mt-1" title={dataset.error}>
-                          {dataset.error.substring(0, 50)}...
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="h-10">
+                    <TableHead className="py-2 text-xs font-medium">Soubor</TableHead>
+                    <TableHead className="py-2 text-xs font-medium">Status</TableHead>
+                    <TableHead className="py-2 text-xs font-medium">Nahráno</TableHead>
+                    <TableHead className="py-2 text-xs font-medium">Dokončeno</TableHead>
+                    <TableHead className="py-2 text-xs font-medium">Akce</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {datasets.map((dataset) => (
+                    <TableRow 
+                      key={dataset.id}
+                      className={`h-12 ${activeDataset === dataset.id ? 'bg-blue-50' : ''}`}
+                    >
+                      <TableCell className="py-2">
+                        <div className="max-w-xs truncate text-sm font-medium" title={getWeekFromFilename(dataset.filename)}>
+                          {getWeekFromFilename(dataset.filename)}
                         </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {formatDate(dataset.uploadTime)}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {dataset.completedTime ? formatDate(dataset.completedTime) : '-'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        {dataset.status === 'completed' && (
-                          <Button
-                            variant={activeDataset === dataset.id ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => activateDataset(dataset.id)}
-                          >
-                            {activeDataset === dataset.id ? 'Aktivní' : 'Aktivovat'}
-                          </Button>
+                        <div className="text-xs text-gray-500">{dataset.id}</div>
+                      </TableCell>
+                      <TableCell className="py-2">
+                        {getStatusBadge(dataset)}
+                        {dataset.error && (
+                          <div className="text-xs text-red-600 mt-1" title={dataset.error}>
+                            {dataset.error.substring(0, 40)}...
+                          </div>
                         )}
-                        {dataset.status === 'processing' && (
-                          <Button variant="ghost" size="sm" disabled>
-                            <Clock className="w-4 h-4 mr-1" />
-                            Zpracovává se...
-                          </Button>
-                        )}
-                        {dataset.status === 'error' && (
-                          <>
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={() => restartExtraction(dataset.id)}
-                              className="bg-orange-600 hover:bg-orange-700"
-                            >
-                              Restartovat
-                            </Button>
+                      </TableCell>
+                      <TableCell className="py-2 text-xs">
+                        {formatDate(dataset.uploadTime)}
+                      </TableCell>
+                      <TableCell className="py-2 text-xs">
+                        {dataset.completedTime ? formatDate(dataset.completedTime) : '-'}
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <div className="flex gap-1">
+                          {dataset.status === 'completed' && (
                             <Button
                               variant={activeDataset === dataset.id ? "default" : "outline"}
                               size="sm"
                               onClick={() => activateDataset(dataset.id)}
-                              disabled={!dataset.steps.extraction_completed}
-                              title={!dataset.steps.extraction_completed ? "Extrakce nebyla dokončena" : ""}
+                              className="h-7 px-2 text-xs"
                             >
                               {activeDataset === dataset.id ? 'Aktivní' : 'Aktivovat'}
                             </Button>
-                          </>
-                        )}
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => deleteDataset(dataset.id)}
-                        >
-                          Smazat
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                          )}
+                          {dataset.status === 'processing' && (
+                            <Button variant="ghost" size="sm" disabled className="h-7 px-2 text-xs">
+                              <Clock className="w-3 h-3 mr-1" />
+                              Zpracovává se...
+                            </Button>
+                          )}
+                          {dataset.status === 'error' && (
+                            <>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => restartExtraction(dataset.id)}
+                                className="bg-orange-600 hover:bg-orange-700 h-7 px-2 text-xs"
+                              >
+                                Restart
+                              </Button>
+                              <Button
+                                variant={activeDataset === dataset.id ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => activateDataset(dataset.id)}
+                                disabled={!dataset.steps.extraction_completed}
+                                title={!dataset.steps.extraction_completed ? "Extrakce nebyla dokončena" : ""}
+                                className="h-7 px-2 text-xs"
+                              >
+                                {activeDataset === dataset.id ? 'Aktivní' : 'Aktivovat'}
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => deleteDataset(dataset.id)}
+                            className="h-7 px-2 text-xs"
+                          >
+                            Smazat
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
             
-            <div className="flex justify-between items-center pt-2 border-t">
-              <div className="text-sm text-gray-500">
+            <div className="flex justify-between items-center pt-2 border-t text-xs text-gray-500">
+              <div>
                 Automatická aktualizace každých 30 sekund
               </div>
-              <Button variant="outline" size="sm" onClick={loadDatasets}>
+              <Button variant="outline" size="sm" onClick={loadDatasets} className="h-7 px-2 text-xs">
                 Aktualizovat
               </Button>
             </div>
