@@ -305,7 +305,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       }
       
       // Update metadata with final status (while loop determined if all videos processed)
-      metadata.status = allVideosProcessed ? 'completed' : 'partial';
+      metadata.status = allVideosProcessed ? 'completed' : 'error';
       metadata.steps.extraction_completed = allVideosProcessed;
       metadata.videos_total = totalVideos;
       metadata.videos_processed = processedVideos;
@@ -318,13 +318,13 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       const progressPath = path.join(__dirname, 'progress.json');
       try {
         await fs.writeFile(progressPath, JSON.stringify({
-          status: allVideosProcessed ? 'completed' : 'partial',
-          message: allVideosProcessed ? 'Extrakce dokončena úspěšně' : `Částečně dokončeno: ${processedVideos}/${totalVideos} videí`,
+          status: allVideosProcessed ? 'completed' : 'error',
+          message: allVideosProcessed ? 'Extrakce dokončena úspěšně' : `Chyba při extrakci: ${processedVideos}/${totalVideos} videí zpracováno`,
           current: processedVideos,
           total: totalVideos,
           timestamp: new Date().toISOString()
         }));
-        console.log(`✅ Progress status updated to ${allVideosProcessed ? 'completed' : 'partial'}`);
+        console.log(`✅ Progress status updated to ${allVideosProcessed ? 'completed' : 'error'}`);
       } catch (progressError) {
         console.error('Error updating progress status:', progressError);
       }
@@ -739,8 +739,8 @@ app.post('/api/update-source', async (req, res) => {
 });
 
 // API endpoint pro update datasetu
-// Continue extraction endpoint
-app.post('/api/datasets/:datasetId/continue-extraction', async (req, res) => {
+// Restart extraction endpoint (for error recovery)
+app.post('/api/datasets/:datasetId/restart-extraction', async (req, res) => {
   const { datasetId } = req.params;
   const datasetDir = path.join(__dirname, 'datasets', datasetId);
   
@@ -760,7 +760,16 @@ app.post('/api/datasets/:datasetId/continue-extraction', async (req, res) => {
       return res.status(400).json({ error: 'Clean CSV not found. Process Excel file first.' });
     }
     
-    console.log(`Starting continue extraction for dataset ${datasetId}`);
+    console.log(`Starting restart extraction for dataset ${datasetId}`);
+    
+    // Delete existing extracted.csv to start fresh
+    const extractedPath = path.join(datasetDir, 'extracted.csv');
+    try {
+      await fs.unlink(extractedPath);
+      console.log('🗑️ Deleted existing extracted.csv for fresh restart');
+    } catch (e) {
+      console.log('No existing extracted.csv to delete');
+    }
     
     // Start automatic batch processing (same as initial extraction)
     const batchSize = 15;
@@ -772,16 +781,16 @@ app.post('/api/datasets/:datasetId/continue-extraction', async (req, res) => {
     
     while (!allVideosProcessed && currentRun < maxRuns) {
       currentRun++;
-      console.log(`🔄 Continue extraction run ${currentRun}/${maxRuns}`);
-      
-      const result = await runPythonScript('extract_video_info_fast.py', [
-        path.join(datasetDir, 'clean.csv'),
-        path.join(datasetDir, 'extracted.csv'),
-        maxVideosPerRun.toString(),
-        batchSize.toString()
-      ]);
-      
-      console.log(`✅ Continue run ${currentRun} completed:`, result.stdout);
+          console.log(`🔄 Restart extraction run ${currentRun}/${maxRuns}`);
+          
+          const result = await runPythonScript('extract_video_info_fast.py', [
+            path.join(datasetDir, 'clean.csv'),
+            path.join(datasetDir, 'extracted.csv'),
+            maxVideosPerRun.toString(),
+            batchSize.toString()
+          ]);
+          
+          console.log(`✅ Restart run ${currentRun} completed:`, result.stdout);
       
       // Check if all videos are processed
       try {
@@ -807,7 +816,7 @@ app.post('/api/datasets/:datasetId/continue-extraction', async (req, res) => {
             current: processedVideos,
             total: totalVideos,
             status: 'processing',
-            message: `Pokračování extrakce: ${processedVideos}/${totalVideos} videí (run ${currentRun})`
+            message: `Restart extrakce: ${processedVideos}/${totalVideos} videí (run ${currentRun})`
           }));
         } catch (e) {}
         
@@ -832,7 +841,7 @@ app.post('/api/datasets/:datasetId/continue-extraction', async (req, res) => {
       console.log(`⚠️ Reached maximum runs limit (${maxRuns}). Some videos may remain unprocessed.`);
     }
     
-    console.log(`🏁 Continue extraction completed after ${currentRun} runs`);
+    console.log(`🏁 Restart extraction completed after ${currentRun} runs`);
     
     // Update metadata with final counts
     const metadataPath = path.join(datasetDir, 'metadata.json');
@@ -887,16 +896,16 @@ app.post('/api/datasets/:datasetId/continue-extraction', async (req, res) => {
       console.log('Could not update progress');
     }
     
-    res.json({ 
-      success: true, 
-      message: `Extraction continued. Processed ${processedVideos}/${totalVideos} videos.`,
-      videos_processed: processedVideos,
-      videos_total: totalVideos,
-      status: processedVideos >= totalVideos ? 'completed' : 'partial'
-    });
+        res.json({ 
+          success: true, 
+          message: `Extraction restarted and completed. Processed ${processedVideos}/${totalVideos} videos.`,
+          videos_processed: processedVideos,
+          videos_total: totalVideos,
+          status: allVideosProcessed ? 'completed' : 'error'
+        });
     
   } catch (error) {
-    console.error('Continue extraction failed:', error);
+    console.error('Restart extraction failed:', error);
     
     // Update progress to error
     try {
