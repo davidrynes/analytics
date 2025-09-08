@@ -748,32 +748,95 @@ app.post('/api/datasets/:datasetId/continue-extraction', async (req, res) => {
   
   try {
     // Check if dataset exists
-    if (!fs.existsSync(datasetDir)) {
+    try {
+      await fs.access(datasetDir);
+    } catch (e) {
       return res.status(404).json({ error: 'Dataset not found' });
     }
     
     // Check if clean.csv exists
     const cleanCsvPath = path.join(datasetDir, 'clean.csv');
-    if (!fs.existsSync(cleanCsvPath)) {
+    try {
+      await fs.access(cleanCsvPath);
+    } catch (e) {
       return res.status(400).json({ error: 'Clean CSV not found. Process Excel file first.' });
     }
     
     console.log(`Starting continue extraction for dataset ${datasetId}`);
     
-    // Start extraction with same parameters as initial extraction
+    // Start automatic batch processing (same as initial extraction)
     const batchSize = 15;
     const maxVideosPerRun = 50;
+    const maxRuns = 10;
     
-    const result = await runPythonScript('extract_video_info_fast.py', [
-      path.join(datasetDir, 'clean.csv'),
-      path.join(datasetDir, 'extracted.csv'),
-      maxVideosPerRun.toString(),
-      batchSize.toString()
-    ]);
+    let currentRun = 0;
+    let allVideosProcessed = false;
     
-    console.log('Continue extraction completed:', result.stdout);
+    while (!allVideosProcessed && currentRun < maxRuns) {
+      currentRun++;
+      console.log(`🔄 Continue extraction run ${currentRun}/${maxRuns}`);
+      
+      const result = await runPythonScript('extract_video_info_fast.py', [
+        path.join(datasetDir, 'clean.csv'),
+        path.join(datasetDir, 'extracted.csv'),
+        maxVideosPerRun.toString(),
+        batchSize.toString()
+      ]);
+      
+      console.log(`✅ Continue run ${currentRun} completed:`, result.stdout);
+      
+      // Check if all videos are processed
+      try {
+        const cleanCsv = await fs.readFile(cleanCsvPath, 'utf-8');
+        const cleanLines = cleanCsv.split('\n').filter(line => line.trim());
+        const totalVideos = cleanLines.length - 1;
+        
+        let processedVideos = 0;
+        try {
+          const extractedCsv = await fs.readFile(path.join(datasetDir, 'extracted.csv'), 'utf-8');
+          const extractedLines = extractedCsv.split('\n').filter(line => line.trim());
+          processedVideos = extractedLines.length - 1;
+        } catch (e) {
+          processedVideos = 0;
+        }
+        
+        console.log(`📊 Continue progress: ${processedVideos}/${totalVideos} videos processed`);
+        
+        // Update progress bar in real-time
+        try {
+          const progressPath = path.join(__dirname, 'progress.json');
+          await fs.writeFile(progressPath, JSON.stringify({
+            current: processedVideos,
+            total: totalVideos,
+            status: 'processing',
+            message: `Pokračování extrakce: ${processedVideos}/${totalVideos} videí (run ${currentRun})`
+          }));
+        } catch (e) {}
+        
+        if (processedVideos >= totalVideos) {
+          allVideosProcessed = true;
+          console.log('🎉 All videos processed successfully!');
+        } else if (processedVideos === 0) {
+          console.log('⚠️ No new videos processed, stopping to avoid infinite loop');
+          break;
+        } else {
+          console.log(`⏳ Continuing with next batch after 3 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+        
+      } catch (e) {
+        console.log('Could not check progress, stopping');
+        break;
+      }
+    }
     
-    // Update metadata
+    if (currentRun >= maxRuns) {
+      console.log(`⚠️ Reached maximum runs limit (${maxRuns}). Some videos may remain unprocessed.`);
+    }
+    
+    console.log(`🏁 Continue extraction completed after ${currentRun} runs`);
+    
+    // Update metadata with final counts
     const metadataPath = path.join(datasetDir, 'metadata.json');
     let metadata = {};
     try {
@@ -783,7 +846,7 @@ app.post('/api/datasets/:datasetId/continue-extraction', async (req, res) => {
       console.log('Could not load metadata, creating new');
     }
     
-    // Check final status
+    // Get final status
     let totalVideos = 0;
     let processedVideos = 0;
     
