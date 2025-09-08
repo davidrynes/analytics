@@ -11,6 +11,7 @@ import asyncio
 import pandas as pd
 import time
 import random
+import re
 from playwright.async_api import async_playwright
 import csv
 import sys
@@ -323,10 +324,10 @@ class FastVideoInfoExtractor:
                         print(f"❌ Chyba při zkoušení selektoru '{selector}': {e}")
                         continue  # Zkus další selektor
                 
-                # 2. Pokud stále nic, zkusme najít text obsahující "Video:"
+                # 2. Pokud stále nic, zkusme najít text obsahující "Video:" pomocí regex
                 if not video_info:
                     try:
-                        print("🔍 Hledám text obsahující 'Video:'...")
+                        print("🔍 Hledám text obsahující 'Video:' pomocí regex...")
                         # Najdi všechny elementy obsahující "Video:"
                         video_elements = page.locator("*:has-text('Video:')")
                         count = await video_elements.count()
@@ -335,26 +336,37 @@ class FastVideoInfoExtractor:
                         for i in range(min(count, 5)):  # Zkus prvních 5
                             element = video_elements.nth(i)
                             text = await element.text_content()
-                            print(f"   Element {i}: '{text}'")
+                            print(f"   Element {i}: '{text[:100]}...'")
                             
                             if text and "Video:" in text:
-                                # Najdi řádek s "Video:"
-                                lines = text.split('\n')
-                                for line in lines:
-                                    line = line.strip()
-                                    if "Video:" in line and len(line) < 100:
-                                        # Najdi pozici "Video:" a extrahuj část za ní
-                                        video_pos = line.find("Video:")
-                                        if video_pos >= 0:
-                                            source_part = line[video_pos + 6:].strip()  # Odstraň "Video:"
-                                            if source_part and len(source_part) > 2:
-                                                video_info = source_part
-                                                print(f"🎯 Nalezen zdroj z 'Video:': {video_info}")
-                                                break
+                                # Použij regex pro nalezení "Video:" a následného textu
+                                # Pattern hledá "Video:" (i když je nalepené) a zachytí text za ním
+                                video_pattern = r'Video:\s*([A-Za-z0-9\s\-\.]{1,30}?)(?=\s|[^\w\s]|$)'
+                                matches = re.finditer(video_pattern, text)
+                                
+                                for match in matches:
+                                    source_part = match.group(1).strip()
+                                    print(f"   Regex match: '{source_part}'")
+                                    
+                                    # Vyčisti source_part - vezmi jen první slovo nebo dvě
+                                    # Pro zdroje jako "AP", "ČTK", "Reuters" atd.
+                                    clean_match = re.match(r'^([A-Za-z0-9]{1,20}(?:\s+[A-Za-z0-9]{1,20})?)', source_part)
+                                    if clean_match:
+                                        source_part = clean_match.group(1).strip()
+                                    
+                                    # Kontrola, že je to validní zdroj (ne náhodný text)
+                                    if (source_part and 
+                                        len(source_part) >= 2 and 
+                                        len(source_part) <= 30 and
+                                        not any(char in source_part.lower() for char in ['http', 'www', '.cz', '.com'])):
+                                        video_info = source_part
+                                        print(f"🎯 Nalezen zdroj z 'Video:' regex: {video_info}")
+                                        break
+                                
                                 if video_info:
                                     break
                     except Exception as e:
-                        print(f"❌ Chyba při hledání 'Video:': {e}")
+                        print(f"❌ Chyba při hledání 'Video:' regex: {e}")
                 
                 # 3. Pokud stále nic, zkusme najít text obsahující známé zdroje
                 if not video_info:
