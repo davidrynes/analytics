@@ -12,11 +12,13 @@ interface Dataset {
   filename: string;
   uploadTime: string;
   completedTime?: string;
-  status: 'processing' | 'completed' | 'error';
+  status: 'processing' | 'completed' | 'error' | 'partial';
   steps: {
     excel_processed: boolean;
     extraction_completed: boolean;
   };
+  videos_total?: number;
+  videos_processed?: number;
   error?: string;
 }
 
@@ -99,12 +101,40 @@ const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetSelected }) =>
     }
   };
 
+  const continueExtraction = async (datasetId: string) => {
+    if (!window.confirm('Pokračovat v extrakci videí? Zpracuje se dalších až 50 videí.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/datasets/${datasetId}/continue-extraction`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        alert('Extrakce spuštěna! Sledujte progress bar nahoře.');
+        await loadDatasets();
+      } else {
+        const error = await response.text();
+        alert(`Chyba při spuštění extrakce: ${error}`);
+      }
+    } catch (error) {
+      console.error('Error continuing extraction:', error);
+      alert('Chyba při spuštění extrakce');
+    }
+  };
+
   const getStatusBadge = (dataset: Dataset) => {
     switch (dataset.status) {
       case 'completed':
         return <Badge variant="default" className="bg-green-100 text-green-800"><Check className="w-3 h-3 mr-1" />Dokončeno</Badge>;
       case 'processing':
         return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Clock className="w-3 h-3 mr-1" />Zpracovává se</Badge>;
+      case 'partial':
+        const progress = dataset.videos_total && dataset.videos_processed 
+          ? `${dataset.videos_processed}/${dataset.videos_total}`
+          : 'Částečně';
+        return <Badge variant="default" className="bg-yellow-100 text-yellow-800"><Clock className="w-3 h-3 mr-1" />Částečně ({progress})</Badge>;
       case 'error':
         return <Badge variant="destructive"><AlertCircle className="w-3 h-3 mr-1" />Chyba</Badge>;
       default:
@@ -249,6 +279,25 @@ const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetSelected }) =>
                           >
                             {activeDataset === dataset.id ? 'Aktivní' : 'Aktivovat'}
                           </Button>
+                        )}
+                        {dataset.status === 'partial' && (
+                          <>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => continueExtraction(dataset.id)}
+                              className="bg-yellow-600 hover:bg-yellow-700"
+                            >
+                              Pokračovat
+                            </Button>
+                            <Button
+                              variant={activeDataset === dataset.id ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => activateDataset(dataset.id)}
+                            >
+                              {activeDataset === dataset.id ? 'Aktivní' : 'Aktivovat'}
+                            </Button>
+                          </>
                         )}
                         {dataset.status === 'processing' && (
                           <Button variant="ghost" size="sm" disabled>

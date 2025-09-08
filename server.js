@@ -681,6 +681,117 @@ app.post('/api/update-source', async (req, res) => {
 });
 
 // API endpoint pro update datasetu
+// Continue extraction endpoint
+app.post('/api/datasets/:datasetId/continue-extraction', async (req, res) => {
+  const { datasetId } = req.params;
+  const datasetDir = path.join(__dirname, 'datasets', datasetId);
+  
+  try {
+    // Check if dataset exists
+    if (!fs.existsSync(datasetDir)) {
+      return res.status(404).json({ error: 'Dataset not found' });
+    }
+    
+    // Check if clean.csv exists
+    const cleanCsvPath = path.join(datasetDir, 'clean.csv');
+    if (!fs.existsSync(cleanCsvPath)) {
+      return res.status(400).json({ error: 'Clean CSV not found. Process Excel file first.' });
+    }
+    
+    console.log(`Starting continue extraction for dataset ${datasetId}`);
+    
+    // Start extraction with same parameters as initial extraction
+    const batchSize = 15;
+    const maxVideosPerRun = 50;
+    
+    const result = await runPythonScript('extract_video_info_fast.py', [
+      path.join(datasetDir, 'clean.csv'),
+      path.join(datasetDir, 'extracted.csv'),
+      maxVideosPerRun.toString(),
+      batchSize.toString()
+    ]);
+    
+    console.log('Continue extraction completed:', result.stdout);
+    
+    // Update metadata
+    const metadataPath = path.join(datasetDir, 'metadata.json');
+    let metadata = {};
+    try {
+      const metadataContent = await fs.readFile(metadataPath, 'utf-8');
+      metadata = JSON.parse(metadataContent);
+    } catch (e) {
+      console.log('Could not load metadata, creating new');
+    }
+    
+    // Check final status
+    let totalVideos = 0;
+    let processedVideos = 0;
+    
+    try {
+      const cleanCsv = await fs.readFile(cleanCsvPath, 'utf-8');
+      const cleanLines = cleanCsv.split('\n').filter(line => line.trim());
+      totalVideos = cleanLines.length - 1;
+      
+      try {
+        const extractedCsv = await fs.readFile(path.join(datasetDir, 'extracted.csv'), 'utf-8');
+        const extractedLines = extractedCsv.split('\n').filter(line => line.trim());
+        processedVideos = extractedLines.length - 1;
+      } catch (e) {
+        processedVideos = 0;
+      }
+    } catch (e) {
+      console.log('Could not count videos');
+    }
+    
+    // Update metadata
+    metadata.status = processedVideos >= totalVideos ? 'completed' : 'partial';
+    metadata.steps = metadata.steps || {};
+    metadata.steps.extraction_completed = processedVideos >= totalVideos;
+    metadata.videos_total = totalVideos;
+    metadata.videos_processed = processedVideos;
+    metadata.lastContinueTime = new Date().toISOString();
+    
+    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+    
+    // Clear progress status
+    const progressPath = path.join(__dirname, 'progress.json');
+    try {
+      await fs.writeFile(progressPath, JSON.stringify({
+        current: processedVideos,
+        total: totalVideos,
+        status: processedVideos >= totalVideos ? 'completed' : 'partial',
+        message: `Zpracováno ${processedVideos} z ${totalVideos} videí`
+      }));
+    } catch (e) {
+      console.log('Could not update progress');
+    }
+    
+    res.json({ 
+      success: true, 
+      message: `Extraction continued. Processed ${processedVideos}/${totalVideos} videos.`,
+      videos_processed: processedVideos,
+      videos_total: totalVideos,
+      status: processedVideos >= totalVideos ? 'completed' : 'partial'
+    });
+    
+  } catch (error) {
+    console.error('Continue extraction failed:', error);
+    
+    // Update progress to error
+    try {
+      const progressPath = path.join(__dirname, 'progress.json');
+      await fs.writeFile(progressPath, JSON.stringify({
+        current: 0,
+        total: 0,
+        status: 'error',
+        message: 'Chyba při pokračování extrakce'
+      }));
+    } catch (e) {}
+    
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.put('/api/datasets/:datasetId/update', express.text({ type: 'text/plain', limit: '50mb' }), async (req, res) => {
   try {
     const { datasetId } = req.params;
