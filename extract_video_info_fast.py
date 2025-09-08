@@ -557,14 +557,14 @@ class FastVideoInfoExtractor:
             
             return completed_count
             
-            finally:
-                # Uzavření pages v dávce s lepším error handlingem
-                for page in pages:
-                    try:
-                        await page.close()
-                    except Exception as e:
-                        print(f"⚠️ Chyba při uzavírání stránky: {e}")
-                        pass
+        finally:
+            # Uzavření pages v dávce s lepším error handlingem
+            for page in pages:
+                try:
+                    await page.close()
+                except Exception as e:
+                    print(f"⚠️ Chyba při uzavírání stránky: {e}")
+                    pass
 
     async def run_concurrent(self, max_videos=None):
         """Spustí BATCH zpracování po dávkách."""
