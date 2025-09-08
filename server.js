@@ -212,19 +212,48 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     try {
       // No need to modify script - we pass paths as arguments now
       
-      // Use batch processing instead of video limit for better reliability
-      const batchSize = 50; // Process 50 videos per batch for optimal performance
-      const result2 = await runPythonScript('extract_video_info_fast.py', [
-        path.join(datasetDir, 'clean.csv'), 
-        path.join(datasetDir, 'extracted.csv'),
-        '', // No video limit - process all videos
-        batchSize.toString()
-      ]);
+        // Use batch processing with much smaller batches for Railway reliability
+        const batchSize = 15; // Very small batch size for Railway
+        const maxVideosPerRun = 50; // Process max 50 videos per run to avoid timeout
+        
+        const result2 = await runPythonScript('extract_video_info_fast.py', [
+          path.join(datasetDir, 'clean.csv'),
+          path.join(datasetDir, 'extracted.csv'),
+          maxVideosPerRun.toString(), // Limit videos for Railway
+          batchSize.toString()
+        ]);
       console.log('Video extraction completed:', result2.stdout);
       
+      // Check if there are more videos to process
+      const fs = require('fs').promises;
+      let totalVideos = 0;
+      let processedVideos = 0;
+      
+      try {
+        const cleanCsv = await fs.readFile(path.join(datasetDir, 'clean.csv'), 'utf-8');
+        const cleanLines = cleanCsv.split('\n').filter(line => line.trim());
+        totalVideos = cleanLines.length - 1; // Minus header
+        
+        try {
+          const extractedCsv = await fs.readFile(path.join(datasetDir, 'extracted.csv'), 'utf-8');
+          const extractedLines = extractedCsv.split('\n').filter(line => line.trim());
+          processedVideos = extractedLines.length - 1; // Minus header
+        } catch (e) {
+          processedVideos = 0;
+        }
+      } catch (e) {
+        console.log('Could not count videos');
+      }
+      
       // Update metadata
-      metadata.status = 'completed';
-      metadata.steps.extraction_completed = true;
+      metadata.status = processedVideos >= totalVideos ? 'completed' : 'partial';
+      metadata.steps.extraction_completed = processedVideos >= totalVideos;
+      metadata.videos_total = totalVideos;
+      metadata.videos_processed = processedVideos;
+      
+      if (processedVideos < totalVideos) {
+        console.log(`⚠️ Partial extraction: ${processedVideos}/${totalVideos} videos processed. Run extraction again to continue.`);
+      }
       metadata.completedTime = new Date().toISOString();
       await fs.writeFile(path.join(datasetDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
       

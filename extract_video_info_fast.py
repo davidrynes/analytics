@@ -64,7 +64,7 @@ class FastVideoInfoExtractor:
         return user_agent
     
     async def load_data(self):
-        """Načte data z CSV souboru."""
+        """Načte data z CSV souboru a pokračuje tam, kde skončil předchozí běh."""
         try:
             df = pd.read_csv(self.csv_file, encoding='utf-8', sep=';', quotechar='"', on_bad_lines='skip')
             print(f"Načteno {len(df)} videí z {self.csv_file}")
@@ -75,6 +75,38 @@ class FastVideoInfoExtractor:
             
             if len(df_filtered) == 0:
                 print("❌ Žádná videa nesplňují kritérium Views >= 1000")
+                return False
+            
+            # Kontrola, jestli už existuje extracted.csv a pokračování tam, kde jsme skončili
+            already_processed = set()
+            if os.path.exists(self.output_file):
+                try:
+                    existing_df = pd.read_csv(self.output_file, encoding='utf-8', sep=';', quotechar='"', on_bad_lines='skip')
+                    for _, row in existing_df.iterrows():
+                        # Vytvoříme unikátní klíč pro každé video
+                        key = f"{row['Jméno rubriky']}|{row['Název článku/videa']}"
+                        already_processed.add(key)
+                    print(f"📂 Nalezen existující soubor s {len(existing_df)} již zpracovanými videi")
+                    
+                    # Načteme existující výsledky
+                    self.results = existing_df.to_dict('records')
+                except Exception as e:
+                    print(f"⚠️ Chyba při načítání existujících výsledků: {e}")
+                    already_processed = set()
+            
+            # Odfiltrujeme už zpracovaná videa
+            if already_processed:
+                original_count = len(df_filtered)
+                df_filtered = df_filtered[~df_filtered.apply(
+                    lambda row: f"{row['Jméno rubriky']}|{row['Název článku/videa']}" in already_processed, 
+                    axis=1
+                )].copy()
+                skipped_count = original_count - len(df_filtered)
+                print(f"⏭️ Přeskočeno {skipped_count} již zpracovaných videí")
+                print(f"🎯 Zbývá zpracovat: {len(df_filtered)} videí")
+            
+            if len(df_filtered) == 0:
+                print("✅ Všechna videa jsou již zpracována!")
                 return False
             
             self.data = df_filtered
@@ -508,7 +540,7 @@ class FastVideoInfoExtractor:
             
             # Spuštění tasků v dávce s timeout
             try:
-                batch_timeout = min(15*60, 25*60 // total_batches)  # Max 15 minut na dávku nebo rovnoměrně rozděleno
+                batch_timeout = min(10*60, 15*60 // total_batches)  # Max 10 minut na dávku
                 results = await asyncio.wait_for(
                     asyncio.gather(*tasks, return_exceptions=True),
                     timeout=batch_timeout
@@ -525,13 +557,14 @@ class FastVideoInfoExtractor:
             
             return completed_count
             
-        finally:
-            # Uzavření pages v dávce
-            for page in pages:
-                try:
-                    await page.close()
-                except:
-                    pass
+            finally:
+                # Uzavření pages v dávce s lepším error handlingem
+                for page in pages:
+                    try:
+                        await page.close()
+                    except Exception as e:
+                        print(f"⚠️ Chyba při uzavírání stránky: {e}")
+                        pass
 
     async def run_concurrent(self, max_videos=None):
         """Spustí BATCH zpracování po dávkách."""
@@ -641,12 +674,24 @@ class FastVideoInfoExtractor:
                     await self.save_results()
                 
             finally:
-                await browser.close()
+                try:
+                    await browser.close()
+                    print("🧹 Browser uzavřen")
+                except Exception as e:
+                    print(f"⚠️ Chyba při uzavírání prohlížeče: {e}")
+                    # Force kill any remaining processes
+                    try:
+                        import psutil
+                        for proc in psutil.process_iter(['pid', 'name']):
+                            if 'chrome' in proc.info['name'].lower() or 'chromium' in proc.info['name'].lower():
+                                proc.kill()
+                    except:
+                        pass
         
         return True
     
     async def save_results(self):
-        """Uloží výsledky do CSV."""
+        """Uloží výsledky do CSV (přepíše celý soubor se všemi výsledky)."""
         try:
             if self.results:
                 df_results = pd.DataFrame(self.results)
