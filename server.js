@@ -212,17 +212,77 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     try {
       // No need to modify script - we pass paths as arguments now
       
-        // Use batch processing with much smaller batches for Railway reliability
+        // Use batch processing with automatic continuation until all videos are processed
         const batchSize = 15; // Very small batch size for Railway
         const maxVideosPerRun = 50; // Process max 50 videos per run to avoid timeout
+        const maxRuns = 10; // Safety limit - max 10 runs (500 videos total)
         
-        const result2 = await runPythonScript('extract_video_info_fast.py', [
-          path.join(datasetDir, 'clean.csv'),
-          path.join(datasetDir, 'extracted.csv'),
-          maxVideosPerRun.toString(), // Limit videos for Railway
-          batchSize.toString()
-        ]);
-      console.log('Video extraction completed:', result2.stdout);
+        let currentRun = 0;
+        let allVideosProcessed = false;
+        
+        while (!allVideosProcessed && currentRun < maxRuns) {
+          currentRun++;
+          console.log(`🔄 Starting extraction run ${currentRun}/${maxRuns}`);
+          
+          const result2 = await runPythonScript('extract_video_info_fast.py', [
+            path.join(datasetDir, 'clean.csv'),
+            path.join(datasetDir, 'extracted.csv'),
+            maxVideosPerRun.toString(),
+            batchSize.toString()
+          ]);
+          
+          console.log(`✅ Extraction run ${currentRun} completed:`, result2.stdout);
+          
+          // Check if all videos are processed
+          try {
+            const cleanCsv = await fs.readFile(path.join(datasetDir, 'clean.csv'), 'utf-8');
+            const cleanLines = cleanCsv.split('\n').filter(line => line.trim());
+            const totalVideos = cleanLines.length - 1;
+            
+            let processedVideos = 0;
+            try {
+              const extractedCsv = await fs.readFile(path.join(datasetDir, 'extracted.csv'), 'utf-8');
+              const extractedLines = extractedCsv.split('\n').filter(line => line.trim());
+              processedVideos = extractedLines.length - 1;
+            } catch (e) {
+              processedVideos = 0;
+            }
+            
+            console.log(`📊 Progress: ${processedVideos}/${totalVideos} videos processed`);
+            
+            // Update progress bar in real-time
+            try {
+              const progressPath = path.join(__dirname, 'progress.json');
+              await fs.writeFile(progressPath, JSON.stringify({
+                current: processedVideos,
+                total: totalVideos,
+                status: 'processing',
+                message: `Automatické zpracování: ${processedVideos}/${totalVideos} videí (run ${currentRun})`
+              }));
+            } catch (e) {}
+            
+            if (processedVideos >= totalVideos) {
+              allVideosProcessed = true;
+              console.log('🎉 All videos processed successfully!');
+            } else if (processedVideos === 0) {
+              console.log('⚠️ No new videos processed, stopping to avoid infinite loop');
+              break;
+            } else {
+              console.log(`⏳ Continuing with next batch after 3 seconds...`);
+              await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
+            }
+            
+          } catch (e) {
+            console.log('Could not check progress, stopping');
+            break;
+          }
+        }
+        
+        if (currentRun >= maxRuns) {
+          console.log(`⚠️ Reached maximum runs limit (${maxRuns}). Some videos may remain unprocessed.`);
+        }
+        
+        console.log(`🏁 Extraction process completed after ${currentRun} runs`);
       
       // Check if there are more videos to process
       const fs = require('fs').promises;
