@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group';
 import { Badge } from './ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Search, BarChart3, TrendingUp, Eye, Video, Filter } from 'lucide-react';
+import { Search, BarChart3, TrendingUp, Eye, Video, Filter, Download } from 'lucide-react';
 
 interface VideoData {
   'Jméno rubriky': string;
@@ -463,6 +463,32 @@ const Dashboard: React.FC = () => {
     });
   };
 
+  // Funkce pro stažení filtrovaných dat jako CSV
+  const downloadFilteredCSV = () => {
+    const sortedData = getSortedData();
+    const headers = ['Jméno rubriky', 'Název článku/videa', 'Views', 'Dokoukanost do 25 %', 'Dokoukanost do 50 %', 'Dokoukanost do 75 %', 'Dokoukanost do 100 %', 'Extrahované info', 'Novinky URL'];
+    
+    let csvContent = headers.join(';') + '\n';
+    
+    sortedData.forEach(row => {
+      const csvRow = headers.map(header => {
+        const value = row[header as keyof VideoData] || '';
+        return `"${value.toString().replace(/"/g, '""')}"`;
+      }).join(';');
+      csvContent += csvRow + '\n';
+    });
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `filtered_data_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const basicStats = getBasicStats();
 
   if (loading) {
@@ -549,6 +575,25 @@ const Dashboard: React.FC = () => {
         <div className="text-center">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Video Analytics Dashboard</h1>
           <p className="text-gray-600">Analýza videí z Novinky.cz</p>
+          {selectedDataset && (
+            <div className="mt-4 space-x-4">
+              <Button 
+                onClick={() => window.open(`/datasets/${selectedDataset}/extracted.csv`, '_blank')}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Stáhnout kompletní CSV
+              </Button>
+              <Button 
+                onClick={downloadFilteredCSV}
+                variant="outline"
+                className="border-green-600 text-green-600 hover:bg-green-50"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Stáhnout filtrovaná data
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Filtry */}
